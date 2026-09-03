@@ -31,15 +31,24 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const supabase = getSupabaseAdmin();
   const listingIds = result.rows.map((row) => row.etsy_listing_id);
-  const listingUrls = new Map<number, string | null>();
+  const listingDetails = new Map<
+    number,
+    { imageUrl: string | null; title: string; url: string | null }
+  >();
 
   if (listingIds.length > 0) {
     const { data } = await supabase
       .from("etsy_listings")
-      .select("etsy_listing_id,url")
+      .select("etsy_listing_id,image_url,title,url")
       .in("etsy_listing_id", listingIds);
 
-    data?.forEach((listing) => listingUrls.set(listing.etsy_listing_id, listing.url));
+    data?.forEach((listing) => {
+      listingDetails.set(listing.etsy_listing_id, {
+        imageUrl: listing.image_url,
+        title: listing.title,
+        url: listing.url
+      });
+    });
   }
 
   return (
@@ -65,18 +74,28 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
           </thead>
           <tbody>
             {result.rows.map((post) => {
-              const etsyUrl = listingUrls.get(post.etsy_listing_id);
+              const listing = listingDetails.get(post.etsy_listing_id);
 
               return (
                 <tr key={post.id}>
                   <td>
-                    {etsyUrl ? (
-                      <a href={etsyUrl} target="_blank" rel="noreferrer">
-                        {post.etsy_listing_id}
-                      </a>
-                    ) : (
-                      post.etsy_listing_id
-                    )}
+                    <div className="listing-cell">
+                      {listing?.imageUrl ? (
+                        <img className="thumb" src={listing.imageUrl} alt="" />
+                      ) : (
+                        <div className="thumb" />
+                      )}
+                      <div>
+                        {listing?.url ? (
+                          <a href={listing.url} target="_blank" rel="noreferrer">
+                            {listing.title}
+                          </a>
+                        ) : (
+                          listing?.title ?? `Etsy listing ${post.etsy_listing_id}`
+                        )}
+                        <div className="muted">{post.etsy_listing_id}</div>
+                      </div>
+                    </div>
                   </td>
                   <td>{post.instagram_media_id}</td>
                   <td>{post.media_type}</td>
