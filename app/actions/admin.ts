@@ -10,23 +10,29 @@ import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository"
 
 export async function bootstrapAction() {
   await requireAdminSession();
-  await bootstrapExistingListings();
+  const result = await bootstrapExistingListings();
   revalidatePath("/");
-  redirect("/dashboard");
+  redirect(
+    `/dashboard?action=bootstrap&saved=${result.saved}&fetched=${result.fetched}&errors=${result.errors.length}`
+  );
 }
 
 export async function syncNowAction() {
   await requireAdminSession();
-  await syncEtsyListings();
+  const result = await syncEtsyListings();
   revalidatePath("/");
-  redirect("/dashboard");
+  redirect(
+    `/dashboard?action=sync&fetched=${result.fetched}&known=${result.known}&queued=${result.queued}&errors=${result.errors.length}`
+  );
 }
 
 export async function publishNowAction() {
   await requireAdminSession();
-  await publishPins();
+  const result = await publishPins();
   revalidatePath("/");
-  redirect("/dashboard");
+  redirect(
+    `/dashboard?action=publish&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
+  );
 }
 
 export async function retryQueueItemAction(formData: FormData) {

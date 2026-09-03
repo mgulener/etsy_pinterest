@@ -3,6 +3,7 @@ import {
   publishNowAction,
   syncNowAction
 } from "@/app/actions/admin";
+import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
@@ -11,8 +12,41 @@ import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPost
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+type PageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function getParam(params: Record<string, string | string[] | undefined>, key: string) {
+  const value = params[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function buildActionMessage(params: Record<string, string | string[] | undefined>) {
+  const action = getParam(params, "action");
+
+  if (action === "bootstrap") {
+    return `Bootstrap finished. Fetched ${getParam(params, "fetched") ?? 0}, saved ${getParam(params, "saved") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
+  }
+
+  if (action === "sync") {
+    return `Etsy sync finished. Fetched ${getParam(params, "fetched") ?? 0}, known ${getParam(params, "known") ?? 0}, queued ${getParam(params, "queued") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
+  }
+
+  if (action === "publish") {
+    return `Publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
+  }
+
+  if (getParam(params, "etsy") === "connected") {
+    return "Etsy connected successfully.";
+  }
+
+  return null;
+}
+
+export default async function DashboardPage({ searchParams }: PageProps) {
   await requireAdminSession();
+  const params = (await searchParams) ?? {};
+  const actionMessage = buildActionMessage(params);
 
   const settingsRepository = createAppSettingsRepository();
   const listingsRepository = createListingsRepository();
@@ -45,13 +79,15 @@ export default async function DashboardPage() {
             Connect Etsy
           </a>
           <form action={syncNowAction}>
-            <button type="submit">Sync Etsy Now</button>
+            <SubmitButton pendingText="Syncing Etsy...">Sync Etsy Now</SubmitButton>
           </form>
           <form action={publishNowAction}>
-            <button type="submit">Publish Queue Now</button>
+            <SubmitButton pendingText="Publishing...">Publish Queue Now</SubmitButton>
           </form>
         </div>
       </div>
+
+      {actionMessage ? <section className="status-banner">{actionMessage}</section> : null}
 
       {!initialSyncCompleted ? (
         <section className="notice">
@@ -60,7 +96,9 @@ export default async function DashboardPage() {
             <p>Bootstrap saves current Etsy listings as known without creating Pinterest queue items.</p>
           </div>
           <form action={bootstrapAction}>
-            <button type="submit">Bootstrap Existing Listings</button>
+            <SubmitButton pendingText="Bootstrapping...">
+              Bootstrap Existing Listings
+            </SubmitButton>
           </form>
         </section>
       ) : null}

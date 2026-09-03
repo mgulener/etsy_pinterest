@@ -4,6 +4,7 @@ import {
   retryAllFailedAction,
   retryQueueItemAction
 } from "@/app/actions/admin";
+import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import type { PinQueueStatus } from "@/lib/supabase/types";
@@ -46,7 +47,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
           <p>{result.total} queue items.</p>
         </div>
         <form action={retryAllFailedAction}>
-          <button type="submit">Retry Failed</button>
+          <SubmitButton pendingText="Retrying...">Retry Failed</SubmitButton>
         </form>
       </div>
 
@@ -103,13 +104,17 @@ export default async function QueuePage({ searchParams }: PageProps) {
                     {item.status === "failed" ? (
                       <form action={retryQueueItemAction}>
                         <input type="hidden" name="id" value={item.id} />
-                        <button className="ghost-button" type="submit">Retry</button>
+                        <SubmitButton className="ghost-button" pendingText="Retrying...">
+                          Retry
+                        </SubmitButton>
                       </form>
                     ) : null}
                     {item.status === "pending" || item.status === "failed" ? (
                       <form action={cancelQueueItemAction}>
                         <input type="hidden" name="id" value={item.id} />
-                        <button className="danger-button" type="submit">Cancel</button>
+                        <SubmitButton className="danger-button" pendingText="Cancelling...">
+                          Cancel
+                        </SubmitButton>
                       </form>
                     ) : null}
                   </div>
