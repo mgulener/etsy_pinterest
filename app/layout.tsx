@@ -29,8 +29,8 @@ export default async function RootLayout({
               <Link href="/listings">Listings</Link>
               <Link href="/queue">Pin Queue</Link>
               <Link href="/pins">Pins</Link>
-              <Link href="/instagram-queue">IG Queue</Link>
-              <Link href="/instagram">Instagram</Link>
+              <Link href="/instagram/queue">IG Queue</Link>
+              <Link href="/instagram/posts">Instagram</Link>
               <Link href="/privacy">Privacy</Link>
             </nav>
             <form action={logoutAction}>

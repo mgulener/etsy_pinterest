@@ -66,10 +66,13 @@ export type InstagramQueueRow = {
   description: string | null;
   destination_url: string | null;
   caption: string;
+  post_mode: "single" | "carousel";
+  media_urls: Json;
   status: PinQueueStatus;
   attempt_count: number;
   last_error: string | null;
   scheduled_at: string;
+  processing_started_at: string | null;
   created_at: string;
   updated_at: string;
   processed_at: string | null;
@@ -80,6 +83,9 @@ export type InstagramPostRow = {
   etsy_listing_id: number;
   etsy_image_id: number | null;
   instagram_media_id: string;
+  instagram_creation_id: string | null;
+  media_type: string;
+  caption: string | null;
   instagram_permalink: string | null;
   published_at: string;
   created_at: string;
@@ -139,11 +145,14 @@ export type Database = {
       };
       instagram_queue: {
         Row: InstagramQueueRow;
-        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "created_at" | "updated_at" | "processed_at"> & {
+        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "post_mode" | "media_urls" | "processing_started_at" | "created_at" | "updated_at" | "processed_at"> & {
           id?: string;
           status?: PinQueueStatus;
           attempt_count?: number;
           last_error?: string | null;
+          post_mode?: "single" | "carousel";
+          media_urls?: Json;
+          processing_started_at?: string | null;
           created_at?: string;
           updated_at?: string;
           processed_at?: string | null;
@@ -177,8 +186,9 @@ export type Database = {
       };
       instagram_posts: {
         Row: InstagramPostRow;
-        Insert: Omit<InstagramPostRow, "id" | "published_at" | "created_at"> & {
+        Insert: Omit<InstagramPostRow, "id" | "media_type" | "published_at" | "created_at"> & {
           id?: string;
+          media_type?: string;
           published_at?: string;
           created_at?: string;
         };

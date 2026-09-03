@@ -55,6 +55,7 @@ export default async function InstagramPage({ searchParams }: PageProps) {
             <tr>
               <th>Etsy Listing</th>
               <th>Instagram Media ID</th>
+              <th>Media Type</th>
               <th>Permalink</th>
               <th>Published Date</th>
             </tr>
@@ -75,6 +76,7 @@ export default async function InstagramPage({ searchParams }: PageProps) {
                     )}
                   </td>
                   <td>{post.instagram_media_id}</td>
+                  <td>{post.media_type}</td>
                   <td>
                     {post.instagram_permalink ? (
                       <a href={post.instagram_permalink} target="_blank" rel="noreferrer">
@@ -95,7 +97,7 @@ export default async function InstagramPage({ searchParams }: PageProps) {
       <Pagination
         currentPage={page}
         totalPages={totalPages}
-        getHref={(targetPage) => `/instagram?page=${targetPage}`}
+        getHref={(targetPage) => `/instagram/posts?page=${targetPage}`}
       />
     </main>
   );

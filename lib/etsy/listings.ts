@@ -1,12 +1,17 @@
 import type { EtsyListing, NormalizedEtsyListing } from "./types";
 
 export function normalizeEtsyListing(listing: EtsyListing): NormalizedEtsyListing {
-  const primaryImage = listing.Images?.[0] ?? listing.images?.[0];
+  const images = listing.Images ?? listing.images ?? [];
+  const primaryImage = images[0];
+  const imageUrls = images
+    .map((image) => image.url_fullxfull ?? image.url_570xN)
+    .filter((url): url is string => Boolean(url));
 
   return {
     etsyListingId: listing.listing_id,
     etsyImageId: primaryImage?.listing_image_id ?? null,
     imageUrl: primaryImage?.url_fullxfull ?? primaryImage?.url_570xN ?? null,
+    imageUrls,
     title: listing.title,
     description: listing.description ?? listing.title,
     destinationUrl: listing.url ?? null,

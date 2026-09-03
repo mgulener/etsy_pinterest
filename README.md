@@ -75,9 +75,14 @@ PINTEREST_ACCESS_TOKEN=
 PINTEREST_BOARD_ID=
 
 INSTAGRAM_ACCESS_TOKEN=
+INSTAGRAM_ACCOUNT_ID=
 INSTAGRAM_USER_ID=
 INSTAGRAM_ENABLED=
-INSTAGRAM_API_VERSION=v25.0
+INSTAGRAM_POST_MODE=single
+META_API_VERSION=v25.0
+INSTAGRAM_CONTAINER_MAX_POLLS=6
+INSTAGRAM_CONTAINER_POLL_INTERVAL_MS=1000
+INSTAGRAM_CAROUSEL_MAX_ITEMS=10
 
 ADMIN_PASSWORD=
 CRON_SECRET=
@@ -94,7 +99,7 @@ Only `NEXT_PUBLIC_SUPABASE_URL` is public. `SUPABASE_SERVICE_ROLE_KEY`, Etsy cre
 
 `ETSY_ACCESS_TOKEN` is optional when the OAuth callback flow has saved a token in Supabase. `ETSY_REDIRECT_URI` is also optional locally, but in production it is useful to set it explicitly to the exact Etsy callback URL.
 
-Instagram queueing is enabled automatically when both `INSTAGRAM_ACCESS_TOKEN` and `INSTAGRAM_USER_ID` exist. Set `INSTAGRAM_ENABLED=false` to explicitly disable Instagram queueing. `INSTAGRAM_DRY_RUN` overrides `DRY_RUN` for Instagram publishing only.
+Instagram queueing is enabled automatically when `INSTAGRAM_ACCESS_TOKEN` and either `INSTAGRAM_ACCOUNT_ID` or `INSTAGRAM_USER_ID` exist. Set `INSTAGRAM_ENABLED=false` to explicitly disable Instagram queueing. `INSTAGRAM_DRY_RUN` overrides `DRY_RUN` for Instagram publishing only.
 
 ## Supabase setup
 
@@ -102,7 +107,8 @@ Instagram queueing is enabled automatically when both `INSTAGRAM_ACCESS_TOKEN` a
 2. Open the SQL editor or use the Supabase CLI.
 3. Run `supabase/migrations/0001_initial_schema.sql`.
 4. Run `supabase/migrations/0002_instagram_publishing.sql`.
-5. Add `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to local and Vercel environments.
+5. Run `supabase/migrations/0003_instagram_publishing_details.sql`.
+6. Add `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to local and Vercel environments.
 
 The migration creates:
 
@@ -141,7 +147,7 @@ On first production setup, keep `DRY_RUN=true`.
 2. Sign in to the dashboard.
 3. If the dashboard shows `Initial Etsy Sync Required`, click `Bootstrap Existing Listings`.
 4. The app fetches all active Etsy listings, stores them in `etsy_listings`, and sets `app_settings.initial_sync_completed = true`.
-5. No rows are inserted into `pin_queue` during bootstrap.
+5. No rows are inserted into `pin_queue` or `instagram_queue` during bootstrap.
 
 This prevents the existing 1300+ listings from being treated as new listings.
 
@@ -204,23 +210,61 @@ Manual buttons on the dashboard call the same server-side services.
 
 ## Instagram publishing
 
-Instagram publishing uses the Instagram Graph API content publishing flow:
+Instagram publishing uses the official Meta Instagram API content publishing flow:
 
 1. Create a media container from the Etsy image URL.
-2. Publish that container as an Instagram media object.
-3. Store the returned media ID and permalink in `instagram_posts`.
-4. Mark the `instagram_queue` row `published`, return it to `pending`, or mark it `failed` after `MAX_INSTAGRAM_RETRIES`.
+2. Poll the container status with a bounded retry loop.
+3. Publish that container as an Instagram media object.
+4. Store the returned media ID, creation ID, media type, caption, and permalink in `instagram_posts`.
+5. Mark the `instagram_queue` row `published`, return it to `pending`, or mark it `failed` after `MAX_INSTAGRAM_RETRIES`.
 
 Set these Vercel environment variables when the Meta app/token is ready:
 
 ```text
 INSTAGRAM_ACCESS_TOKEN=<server-only Instagram User access token>
-INSTAGRAM_USER_ID=<Instagram professional account id>
+INSTAGRAM_ACCOUNT_ID=<Instagram professional account id>
 INSTAGRAM_ENABLED=true
+INSTAGRAM_POST_MODE=single
 INSTAGRAM_DRY_RUN=true
 ```
 
-The Instagram account must be a professional account and the image URL must be publicly accessible over HTTPS. Start with `INSTAGRAM_DRY_RUN=true`, then switch it to `false` after the queue behavior is verified.
+The Instagram account must be a Business or Creator professional account. Personal Instagram accounts are not supported. The image URL must be publicly accessible over HTTPS because Meta fetches the media from the URL. The first implementation uses Etsy image URLs directly; `resolveInstagramMediaUrls()` keeps the media URL layer isolated so a later Supabase Storage fallback can be added without changing the Instagram API client.
+
+### Instagram Setup
+
+1. Create or use a Meta app that has access to the Instagram API with Instagram Login.
+2. Connect a Business or Creator Instagram professional account.
+3. Request the current publishing permissions required by Meta, including `instagram_business_basic` and `instagram_business_content_publish`.
+4. Generate an Instagram User access token for that professional account.
+5. Find the Instagram professional account ID and set it as `INSTAGRAM_ACCOUNT_ID`.
+6. Add the env vars to Vercel as server-side production variables.
+7. Keep `INSTAGRAM_DRY_RUN=true` for the first test.
+8. Create a new Etsy listing and run `Sync Etsy Now`.
+9. Confirm it appears in `/instagram/queue`.
+10. Click `Publish Instagram Now` and confirm it stays pending in dry-run mode.
+11. Set `INSTAGRAM_DRY_RUN=false` only after the queue and caption look right.
+
+Post modes:
+
+```text
+INSTAGRAM_POST_MODE=single
+```
+
+Publishes one image feed post from the first Etsy image.
+
+```text
+INSTAGRAM_POST_MODE=carousel
+```
+
+Publishes one carousel post from the first eligible Etsy image URLs, capped by `INSTAGRAM_CAROUSEL_MAX_ITEMS`. The invariant still holds: one `etsy_listing_id` gets at most one automatic Instagram publication.
+
+Token notes:
+
+- Keep `INSTAGRAM_ACCESS_TOKEN` server-side only.
+- Never log the token or expose it in the browser.
+- Tokens can expire. Authentication errors are classified as permanent so the worker does not waste all retry attempts on an invalid token.
+- Common permanent errors are invalid/expired token and invalid media URL.
+- Common retryable errors are temporary Meta failures and rate limits.
 
 ## Vercel deployment
 
@@ -253,7 +297,7 @@ x-cron-secret: <CRON_SECRET>
 3. Create one new Etsy listing.
 4. Click `Sync Etsy Now` or wait for `/api/cron/sync-etsy`.
 5. Confirm one pending queue item appears.
-6. Click `Publish Queue Now`.
+6. Click `Publish Pins Now` or `Publish Instagram Now`.
 7. Confirm logs show `[DRY RUN] Would publish...` and no Pinterest Pin is created.
 8. Set `DRY_RUN=false` only after the queue behavior looks correct.
 

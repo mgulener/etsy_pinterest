@@ -13,6 +13,9 @@ export type InstagramPostsRepository = {
     etsyListingId: number;
     etsyImageId: number | null;
     instagramMediaId: string;
+    instagramCreationId?: string;
+    mediaType: string;
+    caption: string;
     instagramPermalink?: string;
   }): Promise<void>;
   list(params: {
@@ -56,6 +59,9 @@ export function createInstagramPostsRepository(): InstagramPostsRepository {
         etsy_listing_id: input.etsyListingId,
         etsy_image_id: input.etsyImageId,
         instagram_media_id: input.instagramMediaId,
+        instagram_creation_id: input.instagramCreationId ?? null,
+        media_type: input.mediaType,
+        caption: input.caption,
         instagram_permalink: input.instagramPermalink ?? null
       });
 

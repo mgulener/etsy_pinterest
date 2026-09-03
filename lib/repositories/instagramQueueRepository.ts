@@ -1,5 +1,10 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
+import {
+  getInstagramPostMode,
+  resolveInstagramMediaUrls
+} from "@/lib/instagram/media";
+import type { InstagramPostMode } from "@/lib/instagram/types";
 import type { InstagramQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 
 export type InstagramQueuePageResult = {
@@ -27,11 +32,23 @@ export type InstagramQueueRepository = {
 };
 
 function buildInstagramCaption(listing: NormalizedEtsyListing) {
-  const urlLine = listing.destinationUrl ? `\n\nShop on Etsy: ${listing.destinationUrl}` : "";
-  const body = [listing.title, listing.description].filter(Boolean).join("\n\n");
-  const maxBodyLength = Math.max(2200 - urlLine.length, 0);
+  const caption = [
+    listing.title,
+    "Available now in our Etsy shop.",
+    "Link in bio.",
+    "#etsyfinds #giftideas #handmade"
+  ].join("\n\n");
 
-  return `${body.slice(0, maxBodyLength).trimEnd()}${urlLine}`.slice(0, 2200);
+  return caption.slice(0, 2200);
+}
+
+function resolvePostMode(listing: NormalizedEtsyListing): InstagramPostMode {
+  const configuredMode = getInstagramPostMode();
+  const mediaUrls = resolveInstagramMediaUrls(listing, configuredMode);
+
+  return configuredMode === "carousel" && mediaUrls.length > 1
+    ? "carousel"
+    : "single";
 }
 
 export function createInstagramQueueRepository(): InstagramQueueRepository {
@@ -52,6 +69,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
     },
 
     async enqueueListing(listing) {
+      const postMode = resolvePostMode(listing);
+      const mediaUrls = resolveInstagramMediaUrls(listing, postMode);
       const { error } = await supabase.from("instagram_queue").insert({
         etsy_listing_id: listing.etsyListingId,
         etsy_image_id: listing.etsyImageId,
@@ -60,6 +79,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         description: listing.description,
         destination_url: listing.destinationUrl,
         caption: buildInstagramCaption(listing),
+        post_mode: postMode,
+        media_urls: mediaUrls,
         scheduled_at: new Date().toISOString()
       });
 
@@ -95,7 +116,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         .from("instagram_queue")
         .update({
           status: "processing",
-          last_error: null
+          last_error: null,
+          processing_started_at: new Date().toISOString()
         })
         .eq("id", id)
         .eq("status", "pending")
@@ -130,7 +152,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         .update({
           status: "pending",
           attempt_count: attemptCount,
-          last_error: errorMessage
+          last_error: errorMessage,
+          processing_started_at: null
         })
         .eq("id", id);
 
@@ -146,6 +169,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           status: "failed",
           attempt_count: attemptCount,
           last_error: errorMessage,
+          processing_started_at: null,
           processed_at: new Date().toISOString()
         })
         .eq("id", id);
@@ -160,7 +184,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         .from("instagram_queue")
         .update({
           status: "pending",
-          last_error: null
+          last_error: null,
+          processing_started_at: null
         })
         .eq("id", id);
 
@@ -177,6 +202,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           attempt_count: 0,
           last_error: null,
           processed_at: null,
+          processing_started_at: null,
           scheduled_at: new Date().toISOString()
         })
         .eq("id", id)
@@ -195,6 +221,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           attempt_count: 0,
           last_error: null,
           processed_at: null,
+          processing_started_at: null,
           scheduled_at: new Date().toISOString()
         })
         .eq("status", "failed");
@@ -209,6 +236,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         .from("instagram_queue")
         .update({
           status: "cancelled",
+          processing_started_at: null,
           processed_at: new Date().toISOString()
         })
         .eq("id", id)

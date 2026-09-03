@@ -74,6 +74,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
               <th>Listing</th>
               <th>Status</th>
               <th>Attempts</th>
+              <th>Mode</th>
               <th>Scheduled At</th>
               <th>Caption</th>
               <th>Last Error</th>
@@ -98,6 +99,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                   <span className={`badge ${item.status}`}>{item.status}</span>
                 </td>
                 <td>{item.attempt_count}</td>
+                <td>{item.post_mode}</td>
                 <td>{formatDate(item.scheduled_at)}</td>
                 <td className="muted caption-cell">{item.caption}</td>
                 <td className="muted">{item.last_error ?? "-"}</td>

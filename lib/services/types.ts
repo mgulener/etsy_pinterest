@@ -68,6 +68,9 @@ export type InstagramPublisherPostsRepository = {
     etsyListingId: number;
     etsyImageId: number | null;
     instagramMediaId: string;
+    instagramCreationId?: string;
+    mediaType: string;
+    caption: string;
     instagramPermalink?: string;
   }): Promise<void>;
 };

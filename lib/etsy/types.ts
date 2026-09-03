@@ -29,6 +29,7 @@ export type NormalizedEtsyListing = {
   etsyListingId: number;
   etsyImageId: number | null;
   imageUrl: string | null;
+  imageUrls: string[];
   title: string;
   description: string | null;
   destinationUrl: string | null;

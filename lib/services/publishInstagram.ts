@@ -1,5 +1,6 @@
 import { getOptionalNumber } from "@/lib/config/env";
 import { createInstagramPost } from "@/lib/instagram/posts";
+import { InstagramApiError } from "@/lib/instagram/types";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { logger } from "@/lib/utils/logger";
@@ -23,6 +24,10 @@ export type PublishInstagramResult = {
 
 function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown Instagram publishing error";
+}
+
+function shouldRetryError(error: unknown) {
+  return error instanceof InstagramApiError ? error.retryable : true;
 }
 
 function getInstagramDryRun() {
@@ -86,9 +91,11 @@ export async function publishInstagramWithDependencies(input: {
       }
 
       if (input.dryRun) {
-        logger.info("DRY RUN", "Would publish Instagram post", {
+        logger.info("DRY RUN][INSTAGRAM", "Would publish Instagram post", {
           etsyListingId: item.etsy_listing_id,
-          title: item.title
+          image: item.image_url,
+          caption: item.caption,
+          mode: item.post_mode
         });
         await input.queueRepository.markPendingAfterDryRun(item.id);
         continue;
@@ -96,13 +103,20 @@ export async function publishInstagramWithDependencies(input: {
 
       const post = await input.instagram.createPost({
         imageUrl: item.image_url,
-        caption: item.caption
+        imageUrls: Array.isArray(item.media_urls)
+          ? item.media_urls.filter((url): url is string => typeof url === "string")
+          : [],
+        caption: item.caption,
+        mode: item.post_mode
       });
 
       await input.postsRepository.createPost({
         etsyListingId: item.etsy_listing_id,
         etsyImageId: item.etsy_image_id,
         instagramMediaId: post.id,
+        instagramCreationId: post.creationId,
+        mediaType: post.mediaType,
+        caption: item.caption,
         instagramPermalink: post.permalink
       });
 
@@ -117,7 +131,7 @@ export async function publishInstagramWithDependencies(input: {
       const nextAttemptCount = item.attempt_count + 1;
       errors.push({ etsyListingId: item.etsy_listing_id, message });
 
-      if (nextAttemptCount >= input.maxRetries) {
+      if (nextAttemptCount >= input.maxRetries || !shouldRetryError(error)) {
         await input.queueRepository.markFailed(item.id, message, nextAttemptCount);
         failed += 1;
         logger.error("INSTAGRAM_QUEUE", "Queue item failed permanently", {

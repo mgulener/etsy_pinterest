@@ -65,13 +65,13 @@ export async function retryInstagramQueueItemAction(formData: FormData) {
     await createInstagramQueueRepository().retry(id);
   }
 
-  revalidatePath("/instagram-queue");
+  revalidatePath("/instagram/queue");
 }
 
 export async function retryAllFailedInstagramAction() {
   await requireAdminSession();
   await createInstagramQueueRepository().retryAllFailed();
-  revalidatePath("/instagram-queue");
+  revalidatePath("/instagram/queue");
 }
 
 export async function cancelInstagramQueueItemAction(formData: FormData) {
@@ -82,7 +82,7 @@ export async function cancelInstagramQueueItemAction(formData: FormData) {
     await createInstagramQueueRepository().cancel(id);
   }
 
-  revalidatePath("/instagram-queue");
+  revalidatePath("/instagram/queue");
 }
 
 export async function retryAllFailedAction() {

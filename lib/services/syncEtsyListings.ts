@@ -137,7 +137,10 @@ function isInstagramQueueEnabled() {
     return process.env.INSTAGRAM_ENABLED === "true";
   }
 
-  return Boolean(process.env.INSTAGRAM_ACCESS_TOKEN && process.env.INSTAGRAM_USER_ID);
+  return Boolean(
+    process.env.INSTAGRAM_ACCESS_TOKEN &&
+      (process.env.INSTAGRAM_ACCOUNT_ID || process.env.INSTAGRAM_USER_ID)
+  );
 }
 
 export async function syncEtsyListings() {
