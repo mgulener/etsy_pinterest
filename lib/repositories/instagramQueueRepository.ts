@@ -4,6 +4,7 @@ import {
   getInstagramPostMode,
   resolveInstagramMediaUrls
 } from "@/lib/instagram/media";
+import { buildInstagramCaption } from "@/lib/instagram/caption";
 import type { InstagramPostMode } from "@/lib/instagram/types";
 import type { InstagramQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 
@@ -30,17 +31,6 @@ export type InstagramQueueRepository = {
     status?: PinQueueStatus;
   }): Promise<InstagramQueuePageResult>;
 };
-
-function buildInstagramCaption(listing: NormalizedEtsyListing) {
-  const caption = [
-    listing.title,
-    "Available now in our Etsy shop.",
-    "Link in bio.",
-    "#etsyfinds #giftideas #handmade"
-  ].join("\n\n");
-
-  return caption.slice(0, 2200);
-}
 
 function resolvePostMode(listing: NormalizedEtsyListing): InstagramPostMode {
   const configuredMode = getInstagramPostMode();

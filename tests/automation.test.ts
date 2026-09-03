@@ -5,6 +5,7 @@ import test from "node:test";
 import { getAllActiveListings } from "../lib/etsy/client";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
+import { buildInstagramCaption, buildInstagramHashtags } from "../lib/instagram/caption";
 import { createInstagramPost } from "../lib/instagram/posts";
 import { InstagramApiError } from "../lib/instagram/types";
 import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
@@ -413,6 +414,32 @@ test("new listing enters the Instagram queue when enabled", async () => {
   assert.equal(result.queued, 1);
   assert.equal(result.instagramQueued, 1);
   assert.equal(instagramQueueRepository.queued[0]?.etsyListingId, 101);
+});
+
+test("Instagram captions use product-specific hashtags", () => {
+  const listing: NormalizedEtsyListing = {
+    etsyListingId: 101,
+    etsyImageId: 1101,
+    imageUrl: "https://img.test/101.jpg",
+    imageUrls: ["https://img.test/101.jpg"],
+    title: "Personalized Wooden Christmas Ornament for Baby",
+    description: "Rustic cedar keepsake ornament for a first Christmas nursery gift.",
+    destinationUrl: "https://etsy.test/listing/101",
+    state: "active",
+    originalCreationTimestamp: 1_700_000_000
+  };
+
+  const hashtags = buildInstagramHashtags(listing);
+  const caption = buildInstagramCaption(listing);
+
+  assert.equal(hashtags.includes("#christmasdecor"), true);
+  assert.equal(hashtags.includes("#ornament"), true);
+  assert.equal(hashtags.includes("#babygift"), true);
+  assert.equal(hashtags.includes("#wooddecor"), true);
+  assert.equal(hashtags.includes("#personalized"), false);
+  assert.equal(caption.includes("#etsyfinds #giftideas #handmade"), false);
+  assert.equal(caption.includes("#christmasdecor"), true);
+  assert.equal(caption.length <= 2200, true);
 });
 
 test("Etsy listings normalize lowercase images from the API", async () => {
