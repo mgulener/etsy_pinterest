@@ -1,0 +1,29 @@
+{
+  "name": "etsy-pinterest-next",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Etsy listings to Pinterest automation dashboard built with Next.js.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
+    "next": "^16.3.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.18.0",
+    "eslint-config-next": "^16.3.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2"
+  }
+}
