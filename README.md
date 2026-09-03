@@ -184,14 +184,14 @@ Manual buttons on the dashboard call the same server-side services.
 
 ## Vercel deployment
 
-`vercel.json` configures:
+`vercel.json` configures Hobby-plan-compatible daily cron jobs:
 
 ```text
-/api/cron/sync-etsy     0 */6 * * *
-/api/cron/publish-pins  0 * * * *
+/api/cron/sync-etsy     0 3 * * *
+/api/cron/publish-pins  0 4 * * *
 ```
 
-Vercel cron jobs run on production deployments. Set the same environment variables in the Vercel project settings.
+Vercel Hobby accounts only allow daily cron schedules. On a Pro plan, you can change these back to a more active cadence such as sync every 6 hours and publish every hour. Vercel cron jobs run on production deployments. Set the same environment variables in the Vercel project settings.
 
 For cron security, send either:
 
