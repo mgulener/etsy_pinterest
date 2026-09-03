@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/session";
 import { bootstrapExistingListings } from "@/lib/services/bootstrap";
+import { publishInstagram } from "@/lib/services/publishInstagram";
 import { publishPins } from "@/lib/services/publishPins";
 import { syncEtsyListings } from "@/lib/services/syncEtsyListings";
+import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 
 export async function bootstrapAction() {
@@ -22,7 +24,7 @@ export async function syncNowAction() {
   const result = await syncEtsyListings();
   revalidatePath("/");
   redirect(
-    `/dashboard?action=sync&fetched=${result.fetched}&known=${result.known}&queued=${result.queued}&errors=${result.errors.length}`
+    `/dashboard?action=sync&fetched=${result.fetched}&known=${result.known}&queued=${result.queued}&instagramQueued=${result.instagramQueued}&errors=${result.errors.length}`
   );
 }
 
@@ -35,6 +37,15 @@ export async function publishNowAction() {
   );
 }
 
+export async function publishInstagramNowAction() {
+  await requireAdminSession();
+  const result = await publishInstagram();
+  revalidatePath("/");
+  redirect(
+    `/dashboard?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
+  );
+}
+
 export async function retryQueueItemAction(formData: FormData) {
   await requireAdminSession();
   const id = String(formData.get("id") ?? "");
@@ -44,6 +55,34 @@ export async function retryQueueItemAction(formData: FormData) {
   }
 
   revalidatePath("/queue");
+}
+
+export async function retryInstagramQueueItemAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+
+  if (id) {
+    await createInstagramQueueRepository().retry(id);
+  }
+
+  revalidatePath("/instagram-queue");
+}
+
+export async function retryAllFailedInstagramAction() {
+  await requireAdminSession();
+  await createInstagramQueueRepository().retryAllFailed();
+  revalidatePath("/instagram-queue");
+}
+
+export async function cancelInstagramQueueItemAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+
+  if (id) {
+    await createInstagramQueueRepository().cancel(id);
+  }
+
+  revalidatePath("/instagram-queue");
 }
 
 export async function retryAllFailedAction() {

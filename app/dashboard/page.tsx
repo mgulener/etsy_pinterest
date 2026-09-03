@@ -1,11 +1,14 @@
 import {
   bootstrapAction,
+  publishInstagramNowAction,
   publishNowAction,
   syncNowAction
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
+import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
+import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
@@ -29,11 +32,15 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
   }
 
   if (action === "sync") {
-    return `Etsy sync finished. Fetched ${getParam(params, "fetched") ?? 0}, known ${getParam(params, "known") ?? 0}, queued ${getParam(params, "queued") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
+    return `Etsy sync finished. Fetched ${getParam(params, "fetched") ?? 0}, known ${getParam(params, "known") ?? 0}, Pinterest queued ${getParam(params, "queued") ?? 0}, Instagram queued ${getParam(params, "instagramQueued") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
   }
 
   if (action === "publish") {
-    return `Publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
+    return `Pinterest publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
+  }
+
+  if (action === "publish-instagram") {
+    return `Instagram publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
   }
 
   if (getParam(params, "etsy") === "connected") {
@@ -49,6 +56,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const actionMessage = buildActionMessage(params);
 
   const settingsRepository = createAppSettingsRepository();
+  const instagramQueueRepository = createInstagramQueueRepository();
+  const instagramPostsRepository = createInstagramPostsRepository();
   const listingsRepository = createListingsRepository();
   const queueRepository = createPinQueueRepository();
   const postsRepository = createPinterestPostsRepository();
@@ -58,13 +67,19 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     listingsCount,
     pendingCount,
     publishedCount,
-    failedCount
+    failedCount,
+    instagramPendingCount,
+    instagramPublishedCount,
+    instagramFailedCount
   ] = await Promise.all([
     settingsRepository.isInitialSyncCompleted(),
     listingsRepository.count(),
     queueRepository.countByStatus("pending"),
     postsRepository.count(),
-    queueRepository.countByStatus("failed")
+    queueRepository.countByStatus("failed"),
+    instagramQueueRepository.countByStatus("pending"),
+    instagramPostsRepository.count(),
+    instagramQueueRepository.countByStatus("failed")
   ]);
 
   return (
@@ -82,7 +97,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <SubmitButton pendingText="Syncing Etsy...">Sync Etsy Now</SubmitButton>
           </form>
           <form action={publishNowAction}>
-            <SubmitButton pendingText="Publishing...">Publish Queue Now</SubmitButton>
+            <SubmitButton pendingText="Publishing pins...">Publish Pins Now</SubmitButton>
+          </form>
+          <form action={publishInstagramNowAction}>
+            <SubmitButton pendingText="Publishing Instagram...">
+              Publish Instagram Now
+            </SubmitButton>
           </form>
         </div>
       </div>
@@ -119,6 +139,18 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <div className="stat-card">
           <span>Failed Pins</span>
           <strong>{failedCount}</strong>
+        </div>
+        <div className="stat-card">
+          <span>Pending Instagram</span>
+          <strong>{instagramPendingCount}</strong>
+        </div>
+        <div className="stat-card">
+          <span>Published Instagram</span>
+          <strong>{instagramPublishedCount}</strong>
+        </div>
+        <div className="stat-card">
+          <span>Failed Instagram</span>
+          <strong>{instagramFailedCount}</strong>
         </div>
       </section>
     </main>

@@ -4,10 +4,12 @@ import { getRequiredEnv } from "@/lib/config/env";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { logger } from "@/lib/utils/logger";
 import type {
   BootstrapSettingsRepository,
   EtsyListingsSource,
+  InstagramSyncQueueRepository,
   SyncListingsRepository,
   SyncQueueRepository
 } from "./types";
@@ -18,6 +20,7 @@ export type SyncEtsyListingsResult = {
   known: number;
   created: number;
   queued: number;
+  instagramQueued: number;
   skippedBecauseBootstrapRequired: boolean;
   errors: Array<{ etsyListingId: number; message: string }>;
 };
@@ -26,6 +29,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   etsy: EtsyListingsSource;
   listingsRepository: SyncListingsRepository;
   queueRepository: SyncQueueRepository;
+  instagramQueueRepository?: InstagramSyncQueueRepository;
   settingsRepository: BootstrapSettingsRepository;
   boardId: string;
 }): Promise<SyncEtsyListingsResult> {
@@ -39,6 +43,7 @@ export async function syncEtsyListingsWithDependencies(input: {
       known: 0,
       created: 0,
       queued: 0,
+      instagramQueued: 0,
       skippedBecauseBootstrapRequired: true,
       errors: []
     };
@@ -57,6 +62,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   );
   const created = newListings.length;
   let queued = 0;
+  let instagramQueued = 0;
   const errors: SyncEtsyListingsResult["errors"] = [];
 
   logger.info("SYNC", "Listings compared with database", {
@@ -88,6 +94,30 @@ export async function syncEtsyListingsWithDependencies(input: {
         message
       });
     }
+
+    if (input.instagramQueueRepository) {
+      try {
+        const instagramQueueResult =
+          await input.instagramQueueRepository.enqueueListing(listing);
+
+        if (instagramQueueResult === "created") {
+          instagramQueued += 1;
+        }
+
+        logger.info("SYNC", "New listing queued for Instagram", {
+          etsyListingId: listing.etsyListingId,
+          queueResult: instagramQueueResult
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Unknown Instagram listing sync error";
+        errors.push({ etsyListingId: listing.etsyListingId, message });
+        logger.error("SYNC", "Instagram listing sync failed", {
+          etsyListingId: listing.etsyListingId,
+          message
+        });
+      }
+    }
   }
 
   return {
@@ -96,9 +126,18 @@ export async function syncEtsyListingsWithDependencies(input: {
     known,
     created,
     queued,
+    instagramQueued,
     skippedBecauseBootstrapRequired: false,
     errors
   };
+}
+
+function isInstagramQueueEnabled() {
+  if (process.env.INSTAGRAM_ENABLED) {
+    return process.env.INSTAGRAM_ENABLED === "true";
+  }
+
+  return Boolean(process.env.INSTAGRAM_ACCESS_TOKEN && process.env.INSTAGRAM_USER_ID);
 }
 
 export async function syncEtsyListings() {
@@ -106,6 +145,9 @@ export async function syncEtsyListings() {
     etsy: { getAllActiveListings },
     listingsRepository: createListingsRepository(),
     queueRepository: createPinQueueRepository(),
+    instagramQueueRepository: isInstagramQueueEnabled()
+      ? createInstagramQueueRepository()
+      : undefined,
     settingsRepository: createAppSettingsRepository(),
     boardId: getRequiredEnv("PINTEREST_BOARD_ID")
   });

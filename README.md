@@ -1,6 +1,6 @@
-# Etsy Pinterest Automation
+# Etsy Social Automation
 
-Next.js admin dashboard and backend automation for detecting new Etsy listings and publishing them to Pinterest through a durable Supabase queue.
+Next.js admin dashboard and backend automation for detecting new Etsy listings and publishing them to Pinterest and Instagram through durable Supabase queues.
 
 The core invariant is strict:
 
@@ -8,7 +8,7 @@ The core invariant is strict:
 The same etsy_listing_id is never treated as a new product again, even if Etsy renews it.
 ```
 
-That is enforced in application logic and with PostgreSQL unique constraints on `etsy_listings.etsy_listing_id`, `pin_queue.etsy_listing_id`, and `pinterest_posts.etsy_listing_id`.
+That is enforced in application logic and with PostgreSQL unique constraints on `etsy_listings.etsy_listing_id`, `pin_queue.etsy_listing_id`, `pinterest_posts.etsy_listing_id`, `instagram_queue.etsy_listing_id`, and `instagram_posts.etsy_listing_id`.
 
 ## What changed from the legacy project
 
@@ -21,6 +21,7 @@ This version replaces that with:
 - Database-backed initial bootstrap state
 - Etsy pagination for 1300+ listings
 - Queue-based Pinterest publishing with retry limits
+- Queue-based Instagram publishing with retry limits
 - Atomic queue claiming to reduce concurrent duplicate processing risk
 - Vercel Cron endpoints secured with `CRON_SECRET`
 - Password-protected admin dashboard
@@ -32,15 +33,20 @@ This version replaces that with:
 app/
   api/cron/sync-etsy/route.ts
   api/cron/publish-pins/route.ts
+  api/cron/publish-instagram/route.ts
   api/sync/route.ts
   api/pins/route.ts
+  api/instagram/route.ts
   dashboard/page.tsx
   listings/page.tsx
   queue/page.tsx
   pins/page.tsx
+  instagram-queue/page.tsx
+  instagram/page.tsx
 lib/
   etsy/
   pinterest/
+  instagram/
   supabase/
   services/
   repositories/
@@ -68,30 +74,43 @@ ETSY_SHOP_ID=
 PINTEREST_ACCESS_TOKEN=
 PINTEREST_BOARD_ID=
 
+INSTAGRAM_ACCESS_TOKEN=
+INSTAGRAM_USER_ID=
+INSTAGRAM_ENABLED=
+INSTAGRAM_API_VERSION=v25.0
+
 ADMIN_PASSWORD=
 CRON_SECRET=
 
 MAX_PINS_PER_RUN=10
 MAX_PIN_RETRIES=3
+MAX_INSTAGRAM_POSTS_PER_RUN=5
+MAX_INSTAGRAM_RETRIES=3
 DRY_RUN=true
+INSTAGRAM_DRY_RUN=true
 ```
 
-Only `NEXT_PUBLIC_SUPABASE_URL` is public. `SUPABASE_SERVICE_ROLE_KEY`, Etsy credentials, Pinterest credentials, `ADMIN_PASSWORD`, and `CRON_SECRET` are server-only.
+Only `NEXT_PUBLIC_SUPABASE_URL` is public. `SUPABASE_SERVICE_ROLE_KEY`, Etsy credentials, Pinterest credentials, Instagram credentials, `ADMIN_PASSWORD`, and `CRON_SECRET` are server-only.
 
 `ETSY_ACCESS_TOKEN` is optional when the OAuth callback flow has saved a token in Supabase. `ETSY_REDIRECT_URI` is also optional locally, but in production it is useful to set it explicitly to the exact Etsy callback URL.
+
+Instagram queueing is enabled automatically when both `INSTAGRAM_ACCESS_TOKEN` and `INSTAGRAM_USER_ID` exist. Set `INSTAGRAM_ENABLED=false` to explicitly disable Instagram queueing. `INSTAGRAM_DRY_RUN` overrides `DRY_RUN` for Instagram publishing only.
 
 ## Supabase setup
 
 1. Create a Supabase project.
 2. Open the SQL editor or use the Supabase CLI.
 3. Run `supabase/migrations/0001_initial_schema.sql`.
-4. Add `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to local and Vercel environments.
+4. Run `supabase/migrations/0002_instagram_publishing.sql`.
+5. Add `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to local and Vercel environments.
 
 The migration creates:
 
 - `etsy_listings`
 - `pin_queue`
 - `pinterest_posts`
+- `instagram_queue`
+- `instagram_posts`
 - `app_settings`
 - `pin_queue_status` enum
 - indexes and `updated_at` triggers
@@ -158,7 +177,8 @@ The service:
 3. Fetches every active Etsy listing with `limit=100`, `offset`, and `includes=Images`.
 4. Checks existing database rows by `etsy_listing_id`.
 5. Updates `last_seen_at` for known listings.
-6. Inserts new listings and adds exactly one queue item per new `etsy_listing_id`.
+6. Inserts new listings and adds exactly one Pinterest queue item per new `etsy_listing_id`.
+7. Adds exactly one Instagram queue item per new `etsy_listing_id` when Instagram is enabled.
 
 It never uses Etsy timestamps, state transitions, active timestamps, or renew timestamps to decide whether something is new.
 
@@ -182,6 +202,26 @@ The service:
 
 Manual buttons on the dashboard call the same server-side services.
 
+## Instagram publishing
+
+Instagram publishing uses the Instagram Graph API content publishing flow:
+
+1. Create a media container from the Etsy image URL.
+2. Publish that container as an Instagram media object.
+3. Store the returned media ID and permalink in `instagram_posts`.
+4. Mark the `instagram_queue` row `published`, return it to `pending`, or mark it `failed` after `MAX_INSTAGRAM_RETRIES`.
+
+Set these Vercel environment variables when the Meta app/token is ready:
+
+```text
+INSTAGRAM_ACCESS_TOKEN=<server-only Instagram User access token>
+INSTAGRAM_USER_ID=<Instagram professional account id>
+INSTAGRAM_ENABLED=true
+INSTAGRAM_DRY_RUN=true
+```
+
+The Instagram account must be a professional account and the image URL must be publicly accessible over HTTPS. Start with `INSTAGRAM_DRY_RUN=true`, then switch it to `false` after the queue behavior is verified.
+
 ## Vercel deployment
 
 `vercel.json` configures Hobby-plan-compatible daily cron jobs:
@@ -189,6 +229,7 @@ Manual buttons on the dashboard call the same server-side services.
 ```text
 /api/cron/sync-etsy     0 3 * * *
 /api/cron/publish-pins  0 4 * * *
+/api/cron/publish-instagram  0 5 * * *
 ```
 
 Vercel Hobby accounts only allow daily cron schedules. On a Pro plan, you can change these back to a more active cadence such as sync every 6 hours and publish every hour. Vercel cron jobs run on production deployments. Set the same environment variables in the Vercel project settings.

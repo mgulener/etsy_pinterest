@@ -5,8 +5,8 @@ import { isAdminSessionValid } from "@/lib/auth/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Pinterest Automation",
-  description: "Etsy to Pinterest automation dashboard"
+  title: "Etsy Social Automation",
+  description: "Etsy to social publishing automation dashboard"
 };
 
 export default async function RootLayout({
@@ -22,13 +22,15 @@ export default async function RootLayout({
         {isAuthenticated ? (
           <header className="app-header">
             <Link href="/dashboard" className="brand">
-              Pinterest Automation
+              Etsy Social Automation
             </Link>
             <nav>
               <Link href="/dashboard">Dashboard</Link>
               <Link href="/listings">Listings</Link>
-              <Link href="/queue">Queue</Link>
+              <Link href="/queue">Pin Queue</Link>
               <Link href="/pins">Pins</Link>
+              <Link href="/instagram-queue">IG Queue</Link>
+              <Link href="/instagram">Instagram</Link>
               <Link href="/privacy">Privacy</Link>
             </nav>
             <form action={logoutAction}>

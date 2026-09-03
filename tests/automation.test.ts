@@ -3,16 +3,20 @@ import test from "node:test";
 import { getAllActiveListings } from "../lib/etsy/client";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
+import { publishInstagramWithDependencies } from "../lib/services/publishInstagram";
 import { publishPinsWithDependencies } from "../lib/services/publishPins";
 import { syncEtsyListingsWithDependencies } from "../lib/services/syncEtsyListings";
 import type {
   BootstrapSettingsRepository,
+  InstagramPublisherPostsRepository,
+  InstagramPublisherQueueRepository,
   PublisherPostsRepository,
   PublisherQueueRepository,
+  InstagramSyncQueueRepository,
   SyncListingsRepository,
   SyncQueueRepository
 } from "../lib/services/types";
-import type { PinQueueRow } from "../lib/supabase/types";
+import type { InstagramQueueRow, PinQueueRow } from "../lib/supabase/types";
 
 function etsyListing(id: number, state = "active"): EtsyListing {
   return {
@@ -95,6 +99,19 @@ class MemorySyncQueueRepository implements SyncQueueRepository {
   }
 }
 
+class MemoryInstagramSyncQueueRepository implements InstagramSyncQueueRepository {
+  queued: NormalizedEtsyListing[] = [];
+
+  async enqueueListing(listing: NormalizedEtsyListing) {
+    if (this.queued.some((item) => item.etsyListingId === listing.etsyListingId)) {
+      return "duplicate" as const;
+    }
+
+    this.queued.push(listing);
+    return "created" as const;
+  }
+}
+
 function makeQueueItem(input: Partial<PinQueueRow> & { id: string; etsy_listing_id: number }): PinQueueRow {
   return {
     id: input.id,
@@ -115,10 +132,92 @@ function makeQueueItem(input: Partial<PinQueueRow> & { id: string; etsy_listing_
   };
 }
 
+function makeInstagramQueueItem(
+  input: Partial<InstagramQueueRow> & { id: string; etsy_listing_id: number }
+): InstagramQueueRow {
+  return {
+    id: input.id,
+    etsy_listing_id: input.etsy_listing_id,
+    etsy_image_id: input.etsy_image_id ?? input.etsy_listing_id + 1000,
+    image_url: input.image_url ?? `https://img.test/${input.etsy_listing_id}.jpg`,
+    title: input.title ?? `Listing ${input.etsy_listing_id}`,
+    description: input.description ?? `Description ${input.etsy_listing_id}`,
+    destination_url: input.destination_url ?? `https://etsy.test/listing/${input.etsy_listing_id}`,
+    caption: input.caption ?? `Listing ${input.etsy_listing_id}\n\nShop on Etsy: https://etsy.test/listing/${input.etsy_listing_id}`,
+    status: input.status ?? "pending",
+    attempt_count: input.attempt_count ?? 0,
+    last_error: input.last_error ?? null,
+    scheduled_at: input.scheduled_at ?? new Date().toISOString(),
+    created_at: input.created_at ?? new Date().toISOString(),
+    updated_at: input.updated_at ?? new Date().toISOString(),
+    processed_at: input.processed_at ?? null
+  };
+}
+
 class MemoryPublisherQueueRepository implements PublisherQueueRepository {
   items: PinQueueRow[];
 
   constructor(items: PinQueueRow[]) {
+    this.items = items;
+  }
+
+  async listPending(limit: number) {
+    return this.items.filter((item) => item.status === "pending").slice(0, limit);
+  }
+
+  async claimPending(id: string) {
+    const item = this.items.find((candidate) => candidate.id === id);
+
+    if (!item || item.status !== "pending") {
+      return null;
+    }
+
+    item.status = "processing";
+    return item;
+  }
+
+  async markPublished(id: string) {
+    const item = this.items.find((candidate) => candidate.id === id);
+
+    if (item) {
+      item.status = "published";
+      item.processed_at = new Date().toISOString();
+    }
+  }
+
+  async markRetryable(id: string, error: string, attemptCount: number) {
+    const item = this.items.find((candidate) => candidate.id === id);
+
+    if (item) {
+      item.status = "pending";
+      item.last_error = error;
+      item.attempt_count = attemptCount;
+    }
+  }
+
+  async markFailed(id: string, error: string, attemptCount: number) {
+    const item = this.items.find((candidate) => candidate.id === id);
+
+    if (item) {
+      item.status = "failed";
+      item.last_error = error;
+      item.attempt_count = attemptCount;
+    }
+  }
+
+  async markPendingAfterDryRun(id: string) {
+    const item = this.items.find((candidate) => candidate.id === id);
+
+    if (item) {
+      item.status = "pending";
+    }
+  }
+}
+
+class MemoryInstagramPublisherQueueRepository implements InstagramPublisherQueueRepository {
+  items: InstagramQueueRow[];
+
+  constructor(items: InstagramQueueRow[]) {
     this.items = items;
   }
 
@@ -191,6 +290,24 @@ class MemoryPostsRepository implements PublisherPostsRepository {
   }
 }
 
+class MemoryInstagramPostsRepository implements InstagramPublisherPostsRepository {
+  posts = new Set<number>();
+  mediaIds = new Map<number, string>();
+
+  constructor(initialPosts: number[] = []) {
+    initialPosts.forEach((id) => this.posts.add(id));
+  }
+
+  async findByEtsyListingId(etsyListingId: number) {
+    return this.posts.has(etsyListingId) ? { etsyListingId } : null;
+  }
+
+  async createPost(input: { etsyListingId: number; instagramMediaId: string }) {
+    this.posts.add(input.etsyListingId);
+    this.mediaIds.set(input.etsyListingId, input.instagramMediaId);
+  }
+}
+
 test("new listing enters the Pinterest queue", async () => {
   const listingsRepository = new MemoryListingsRepository();
   const queueRepository = new MemorySyncQueueRepository();
@@ -206,6 +323,26 @@ test("new listing enters the Pinterest queue", async () => {
   assert.equal(result.created, 1);
   assert.equal(result.queued, 1);
   assert.equal(queueRepository.queued[0]?.etsyListingId, 101);
+});
+
+test("new listing enters the Instagram queue when enabled", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const queueRepository = new MemorySyncQueueRepository();
+  const instagramQueueRepository = new MemoryInstagramSyncQueueRepository();
+
+  const result = await syncEtsyListingsWithDependencies({
+    etsy: { getAllActiveListings: async () => [etsyListing(101)] },
+    listingsRepository,
+    queueRepository,
+    instagramQueueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    boardId: "board-1"
+  });
+
+  assert.equal(result.created, 1);
+  assert.equal(result.queued, 1);
+  assert.equal(result.instagramQueued, 1);
+  assert.equal(instagramQueueRepository.queued[0]?.etsyListingId, 101);
 });
 
 test("Etsy listings normalize lowercase images from the API", async () => {
@@ -309,6 +446,50 @@ test("Pinterest API success creates a pinterest post", async () => {
 
   assert.equal(result.published, 1);
   assert.equal(postsRepository.posts.has(101), true);
+  assert.equal(queueRepository.items[0]?.status, "published");
+});
+
+test("Instagram API failure does not create an instagram post", async () => {
+  const queueRepository = new MemoryInstagramPublisherQueueRepository([
+    makeInstagramQueueItem({ id: "igq1", etsy_listing_id: 101 })
+  ]);
+  const postsRepository = new MemoryInstagramPostsRepository();
+
+  const result = await publishInstagramWithDependencies({
+    queueRepository,
+    postsRepository,
+    instagram: {
+      createPost: async () => {
+        throw new Error("Instagram unavailable");
+      }
+    },
+    maxPostsPerRun: 10,
+    maxRetries: 3,
+    dryRun: false
+  });
+
+  assert.equal(result.retried, 1);
+  assert.equal(postsRepository.posts.size, 0);
+});
+
+test("Instagram API success creates an instagram post", async () => {
+  const queueRepository = new MemoryInstagramPublisherQueueRepository([
+    makeInstagramQueueItem({ id: "igq1", etsy_listing_id: 101 })
+  ]);
+  const postsRepository = new MemoryInstagramPostsRepository();
+
+  const result = await publishInstagramWithDependencies({
+    queueRepository,
+    postsRepository,
+    instagram: { createPost: async () => ({ id: "ig-101", permalink: "https://instagram.test/p/101" }) },
+    maxPostsPerRun: 10,
+    maxRetries: 3,
+    dryRun: false
+  });
+
+  assert.equal(result.published, 1);
+  assert.equal(postsRepository.posts.has(101), true);
+  assert.equal(postsRepository.mediaIds.get(101), "ig-101");
   assert.equal(queueRepository.items[0]?.status, "published");
 });
 

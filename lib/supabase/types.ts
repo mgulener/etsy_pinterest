@@ -57,6 +57,34 @@ export type PinterestPostRow = {
   created_at: string;
 };
 
+export type InstagramQueueRow = {
+  id: string;
+  etsy_listing_id: number;
+  etsy_image_id: number | null;
+  image_url: string | null;
+  title: string;
+  description: string | null;
+  destination_url: string | null;
+  caption: string;
+  status: PinQueueStatus;
+  attempt_count: number;
+  last_error: string | null;
+  scheduled_at: string;
+  created_at: string;
+  updated_at: string;
+  processed_at: string | null;
+};
+
+export type InstagramPostRow = {
+  id: string;
+  etsy_listing_id: number;
+  etsy_image_id: number | null;
+  instagram_media_id: string;
+  instagram_permalink: string | null;
+  published_at: string;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -109,6 +137,27 @@ export type Database = {
           }
         ];
       };
+      instagram_queue: {
+        Row: InstagramQueueRow;
+        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "created_at" | "updated_at" | "processed_at"> & {
+          id?: string;
+          status?: PinQueueStatus;
+          attempt_count?: number;
+          last_error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          processed_at?: string | null;
+        };
+        Update: Partial<Omit<InstagramQueueRow, "id" | "created_at">>;
+        Relationships: [
+          {
+            foreignKeyName: "instagram_queue_etsy_listing_id_fkey";
+            columns: ["etsy_listing_id"];
+            referencedRelation: "etsy_listings";
+            referencedColumns: ["etsy_listing_id"];
+          }
+        ];
+      };
       pinterest_posts: {
         Row: PinterestPostRow;
         Insert: Omit<PinterestPostRow, "id" | "published_at" | "created_at"> & {
@@ -120,6 +169,23 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "pinterest_posts_etsy_listing_id_fkey";
+            columns: ["etsy_listing_id"];
+            referencedRelation: "etsy_listings";
+            referencedColumns: ["etsy_listing_id"];
+          }
+        ];
+      };
+      instagram_posts: {
+        Row: InstagramPostRow;
+        Insert: Omit<InstagramPostRow, "id" | "published_at" | "created_at"> & {
+          id?: string;
+          published_at?: string;
+          created_at?: string;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "instagram_posts_etsy_listing_id_fkey";
             columns: ["etsy_listing_id"];
             referencedRelation: "etsy_listings";
             referencedColumns: ["etsy_listing_id"];

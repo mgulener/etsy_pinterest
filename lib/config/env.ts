@@ -4,6 +4,8 @@ export type RequiredEnvKey =
   | "ETSY_API_KEY"
   | "PINTEREST_ACCESS_TOKEN"
   | "PINTEREST_BOARD_ID"
+  | "INSTAGRAM_ACCESS_TOKEN"
+  | "INSTAGRAM_USER_ID"
   | "CRON_SECRET"
   | "ADMIN_PASSWORD";
 
@@ -44,6 +46,9 @@ export function getServerEnv() {
     etsyShopId: process.env.ETSY_SHOP_ID,
     pinterestAccessToken: getRequiredEnv("PINTEREST_ACCESS_TOKEN"),
     pinterestBoardId: getRequiredEnv("PINTEREST_BOARD_ID"),
+    instagramAccessToken: process.env.INSTAGRAM_ACCESS_TOKEN,
+    instagramUserId: process.env.INSTAGRAM_USER_ID,
+    instagramEnabled: process.env.INSTAGRAM_ENABLED,
     cronSecret: getRequiredEnv("CRON_SECRET"),
     adminPassword: getRequiredEnv("ADMIN_PASSWORD"),
     maxPinsPerRun: getOptionalNumber("MAX_PINS_PER_RUN", 10),
