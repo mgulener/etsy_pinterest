@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Pagination } from "@/app/components/Pagination";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 
@@ -89,18 +89,13 @@ export default async function ListingsPage({ searchParams }: PageProps) {
         </table>
       </div>
 
-      <div className="pagination">
-        {page > 1 ? (
-          <Link className="button ghost-button" href={`/listings?search=${encodeURIComponent(search)}&page=${page - 1}`}>
-            Previous
-          </Link>
-        ) : null}
-        {page < totalPages ? (
-          <Link className="button ghost-button" href={`/listings?search=${encodeURIComponent(search)}&page=${page + 1}`}>
-            Next
-          </Link>
-        ) : null}
-      </div>
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        getHref={(targetPage) =>
+          `/listings?search=${encodeURIComponent(search)}&page=${targetPage}`
+        }
+      />
     </main>
   );
 }

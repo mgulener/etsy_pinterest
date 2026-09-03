@@ -246,14 +246,14 @@ tr:last-child td {
 
 .listing-cell {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 280px;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 410px;
 }
 
 .thumb {
-  width: 44px;
-  height: 44px;
+  width: 150px;
+  height: 150px;
   flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -300,9 +300,47 @@ tr:last-child td {
 
 .pagination {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
   margin-top: 14px;
+}
+
+.pagination-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-button {
+  display: inline-flex;
+  min-width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.page-button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.pagination-gap {
+  display: inline-flex;
+  width: 28px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .login-shell {

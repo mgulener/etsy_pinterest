@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Pagination } from "@/app/components/Pagination";
 import {
   cancelQueueItemAction,
   retryAllFailedAction,
@@ -120,18 +120,11 @@ export default async function QueuePage({ searchParams }: PageProps) {
         </table>
       </div>
 
-      <div className="pagination">
-        {page > 1 ? (
-          <Link className="button ghost-button" href={`/queue?${statusQuery}page=${page - 1}`}>
-            Previous
-          </Link>
-        ) : null}
-        {page < totalPages ? (
-          <Link className="button ghost-button" href={`/queue?${statusQuery}page=${page + 1}`}>
-            Next
-          </Link>
-        ) : null}
-      </div>
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        getHref={(targetPage) => `/queue?${statusQuery}page=${targetPage}`}
+      />
     </main>
   );
 }

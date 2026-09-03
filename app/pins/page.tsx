@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { Pagination } from "@/app/components/Pagination";
 import { requireAdminSession } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
@@ -87,18 +87,11 @@ export default async function PinsPage({ searchParams }: PageProps) {
         </table>
       </div>
 
-      <div className="pagination">
-        {page > 1 ? (
-          <Link className="button ghost-button" href={`/pins?page=${page - 1}`}>
-            Previous
-          </Link>
-        ) : null}
-        {page < totalPages ? (
-          <Link className="button ghost-button" href={`/pins?page=${page + 1}`}>
-            Next
-          </Link>
-        ) : null}
-      </div>
+      <Pagination
+        currentPage={page}
+        totalPages={totalPages}
+        getHref={(targetPage) => `/pins?page=${targetPage}`}
+      />
     </main>
   );
 }
