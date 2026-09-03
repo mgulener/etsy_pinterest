@@ -17,6 +17,7 @@ export type EtsyListing = {
   created_timestamp?: number;
   creation_timestamp?: number;
   Images?: EtsyImage[];
+  images?: EtsyImage[];
 };
 
 export type EtsyListingsResponse = {

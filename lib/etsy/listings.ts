@@ -1,7 +1,7 @@
 import type { EtsyListing, NormalizedEtsyListing } from "./types";
 
 export function normalizeEtsyListing(listing: EtsyListing): NormalizedEtsyListing {
-  const primaryImage = listing.Images?.[0];
+  const primaryImage = listing.Images?.[0] ?? listing.images?.[0];
 
   return {
     etsyListingId: listing.listing_id,

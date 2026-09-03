@@ -208,6 +208,35 @@ test("new listing enters the Pinterest queue", async () => {
   assert.equal(queueRepository.queued[0]?.etsyListingId, 101);
 });
 
+test("Etsy listings normalize lowercase images from the API", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const queueRepository = new MemorySyncQueueRepository();
+
+  await syncEtsyListingsWithDependencies({
+    etsy: {
+      getAllActiveListings: async () => [
+        {
+          ...etsyListing(101),
+          Images: undefined,
+          images: [
+            {
+              listing_image_id: 999,
+              url_fullxfull: "https://img.test/lowercase.jpg"
+            }
+          ]
+        }
+      ]
+    },
+    listingsRepository,
+    queueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    boardId: "board-1"
+  });
+
+  assert.equal(listingsRepository.listings.get(101)?.imageUrl, "https://img.test/lowercase.jpg");
+  assert.equal(listingsRepository.listings.get(101)?.etsyImageId, 999);
+});
+
 test("known listing does not enter the Pinterest queue", async () => {
   const listingsRepository = new MemoryListingsRepository([101]);
   const queueRepository = new MemorySyncQueueRepository();
