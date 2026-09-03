@@ -4,8 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/session";
 import { bootstrapExistingListings } from "@/lib/services/bootstrap";
-import { publishInstagram } from "@/lib/services/publishInstagram";
-import { publishPins } from "@/lib/services/publishPins";
+import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
+import { publishPinterestPins } from "@/lib/services/publishPinterestPins";
 import { syncEtsyListings } from "@/lib/services/syncEtsyListings";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
@@ -30,7 +30,7 @@ export async function syncNowAction() {
 
 export async function publishNowAction() {
   await requireAdminSession();
-  const result = await publishPins();
+  const result = await publishPinterestPins();
   revalidatePath("/");
   redirect(
     `/dashboard?action=publish&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
@@ -39,7 +39,7 @@ export async function publishNowAction() {
 
 export async function publishInstagramNowAction() {
   await requireAdminSession();
-  const result = await publishInstagram();
+  const result = await publishInstagramPosts();
   revalidatePath("/");
   redirect(
     `/dashboard?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
@@ -54,7 +54,7 @@ export async function retryQueueItemAction(formData: FormData) {
     await createPinQueueRepository().retry(id);
   }
 
-  revalidatePath("/queue");
+  revalidatePath("/pinterest/queue");
 }
 
 export async function retryInstagramQueueItemAction(formData: FormData) {
@@ -88,7 +88,7 @@ export async function cancelInstagramQueueItemAction(formData: FormData) {
 export async function retryAllFailedAction() {
   await requireAdminSession();
   await createPinQueueRepository().retryAllFailed();
-  revalidatePath("/queue");
+  revalidatePath("/pinterest/queue");
 }
 
 export async function cancelQueueItemAction(formData: FormData) {
@@ -99,5 +99,5 @@ export async function cancelQueueItemAction(formData: FormData) {
     await createPinQueueRepository().cancel(id);
   }
 
-  revalidatePath("/queue");
+  revalidatePath("/pinterest/queue");
 }

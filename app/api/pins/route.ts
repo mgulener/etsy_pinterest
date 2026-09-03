@@ -1,15 +1,3 @@
-import { requireAdminRequest } from "@/lib/auth/session";
-import { publishPins } from "@/lib/services/publishPins";
+export { POST } from "@/app/api/pinterest/publish/route";
 
 export const dynamic = "force-dynamic";
-
-export async function POST() {
-  const unauthorized = await requireAdminRequest();
-
-  if (unauthorized) {
-    return unauthorized;
-  }
-
-  const result = await publishPins();
-  return Response.json(result);
-}

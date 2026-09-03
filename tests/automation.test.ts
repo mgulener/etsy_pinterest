@@ -5,8 +5,8 @@ import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
 import { createInstagramPost } from "../lib/instagram/posts";
 import { InstagramApiError } from "../lib/instagram/types";
-import { publishInstagramWithDependencies } from "../lib/services/publishInstagram";
-import { publishPinsWithDependencies } from "../lib/services/publishPins";
+import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
+import { publishPinterestPinsWithDependencies } from "../lib/services/publishPinterestPins";
 import { syncEtsyListingsWithDependencies } from "../lib/services/syncEtsyListings";
 import type {
   BootstrapSettingsRepository,
@@ -462,7 +462,7 @@ test("Pinterest API failure does not create a pinterest post", async () => {
   ]);
   const postsRepository = new MemoryPostsRepository();
 
-  const result = await publishPinsWithDependencies({
+  const result = await publishPinterestPinsWithDependencies({
     queueRepository,
     postsRepository,
     pinterest: {
@@ -485,7 +485,7 @@ test("Pinterest API success creates a pinterest post", async () => {
   ]);
   const postsRepository = new MemoryPostsRepository();
 
-  const result = await publishPinsWithDependencies({
+  const result = await publishPinterestPinsWithDependencies({
     queueRepository,
     postsRepository,
     pinterest: { createPin: async () => ({ id: "pin-101" }) },
@@ -505,7 +505,7 @@ test("Instagram API failure does not create an instagram post", async () => {
   ]);
   const postsRepository = new MemoryInstagramPostsRepository();
 
-  const result = await publishInstagramWithDependencies({
+  const result = await publishInstagramPostsWithDependencies({
     queueRepository,
     postsRepository,
     instagram: {
@@ -528,7 +528,7 @@ test("Instagram API success creates an instagram post", async () => {
   ]);
   const postsRepository = new MemoryInstagramPostsRepository();
 
-  const result = await publishInstagramWithDependencies({
+  const result = await publishInstagramPostsWithDependencies({
     queueRepository,
     postsRepository,
     instagram: {
@@ -559,7 +559,7 @@ test("existing Instagram post skips a second Instagram publish", async () => {
   const postsRepository = new MemoryInstagramPostsRepository([101]);
   let publishCount = 0;
 
-  const result = await publishInstagramWithDependencies({
+  const result = await publishInstagramPostsWithDependencies({
     queueRepository,
     postsRepository,
     instagram: {
@@ -585,7 +585,7 @@ test("Instagram dry run does not call Meta API publisher", async () => {
   const postsRepository = new MemoryInstagramPostsRepository();
   let publishCount = 0;
 
-  const result = await publishInstagramWithDependencies({
+  const result = await publishInstagramPostsWithDependencies({
     queueRepository,
     postsRepository,
     instagram: {
@@ -614,7 +614,7 @@ test("same Instagram queue item concurrent processing publishes once", async () 
   let publishCount = 0;
 
   await Promise.all([
-    publishInstagramWithDependencies({
+    publishInstagramPostsWithDependencies({
       queueRepository,
       postsRepository,
       instagram: {
@@ -627,7 +627,7 @@ test("same Instagram queue item concurrent processing publishes once", async () 
       maxRetries: 3,
       dryRun: false
     }),
-    publishInstagramWithDependencies({
+    publishInstagramPostsWithDependencies({
       queueRepository,
       postsRepository,
       instagram: {
@@ -773,7 +773,7 @@ test("Instagram auth error fails without retrying", async () => {
   ]);
   const postsRepository = new MemoryInstagramPostsRepository();
 
-  const result = await publishInstagramWithDependencies({
+  const result = await publishInstagramPostsWithDependencies({
     queueRepository,
     postsRepository,
     instagram: {
@@ -866,7 +866,7 @@ test("same queue item concurrent processing creates at most one Pinterest pin", 
   let createPinCount = 0;
 
   await Promise.all([
-    publishPinsWithDependencies({
+    publishPinterestPinsWithDependencies({
       queueRepository,
       postsRepository,
       pinterest: {
@@ -879,7 +879,7 @@ test("same queue item concurrent processing creates at most one Pinterest pin", 
       maxRetries: 3,
       dryRun: false
     }),
-    publishPinsWithDependencies({
+    publishPinterestPinsWithDependencies({
       queueRepository,
       postsRepository,
       pinterest: {

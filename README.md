@@ -34,21 +34,24 @@ app/
   api/cron/sync-etsy/route.ts
   api/cron/publish-pins/route.ts
   api/cron/publish-instagram/route.ts
-  api/sync/route.ts
-  api/pins/route.ts
-  api/instagram/route.ts
+  api/etsy/sync/route.ts
+  api/pinterest/publish/route.ts
+  api/instagram/publish/route.ts
   dashboard/page.tsx
-  listings/page.tsx
-  queue/page.tsx
-  pins/page.tsx
-  instagram-queue/page.tsx
-  instagram/page.tsx
+  etsy/listings/page.tsx
+  pinterest/queue/page.tsx
+  pinterest/posts/page.tsx
+  instagram/queue/page.tsx
+  instagram/posts/page.tsx
 lib/
   etsy/
   pinterest/
   instagram/
   supabase/
   services/
+    syncEtsyListings.ts
+    publishPinterestPins.ts
+    publishInstagramPosts.ts
   repositories/
   auth/
   config/
@@ -56,6 +59,30 @@ lib/
 supabase/migrations/
 tests/
 ```
+
+Canonical dashboard routes:
+
+```text
+/dashboard
+/etsy/listings
+/pinterest/queue
+/pinterest/posts
+/instagram/queue
+/instagram/posts
+/privacy
+```
+
+Legacy routes such as `/listings`, `/queue`, `/pins`, `/instagram`, and `/instagram-queue` redirect to their canonical channel paths.
+
+Canonical manual API routes:
+
+```text
+POST /api/etsy/sync
+POST /api/pinterest/publish
+POST /api/instagram/publish
+```
+
+Legacy API routes `/api/sync`, `/api/pins`, and `/api/instagram` remain as compatibility wrappers.
 
 ## Environment variables
 

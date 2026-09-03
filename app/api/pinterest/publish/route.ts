@@ -1,5 +1,5 @@
 import { requireAdminRequest } from "@/lib/auth/session";
-import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
+import { publishPinterestPins } from "@/lib/services/publishPinterestPins";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,6 @@ export async function POST() {
     return unauthorized;
   }
 
-  const result = await publishInstagramPosts();
+  const result = await publishPinterestPins();
   return Response.json(result);
 }

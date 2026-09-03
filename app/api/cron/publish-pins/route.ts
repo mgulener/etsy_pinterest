@@ -1,5 +1,5 @@
 import { validateCronRequest } from "@/lib/auth/cron";
-import { publishPins } from "@/lib/services/publishPins";
+import { publishPinterestPins } from "@/lib/services/publishPinterestPins";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,6 @@ export async function GET(request: Request) {
     return unauthorized;
   }
 
-  const result = await publishPins();
+  const result = await publishPinterestPins();
   return Response.json(result);
 }

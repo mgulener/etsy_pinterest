@@ -1,5 +1,5 @@
 import { validateCronRequest } from "@/lib/auth/cron";
-import { publishInstagram } from "@/lib/services/publishInstagram";
+import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +10,6 @@ export async function GET(request: Request) {
     return unauthorized;
   }
 
-  const result = await publishInstagram();
+  const result = await publishInstagramPosts();
   return Response.json(result);
 }

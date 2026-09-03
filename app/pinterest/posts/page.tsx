@@ -1,7 +1,7 @@
 import { Pagination } from "@/app/components/Pagination";
 import { requireAdminSession } from "@/lib/auth/session";
-import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
 
 export const dynamic = "force-dynamic";
 
@@ -15,17 +15,15 @@ function getParam(params: Record<string, string | string[] | undefined>, key: st
 }
 
 function formatDate(value: string | null) {
-  return value
-    ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-    : "-";
+  return value ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
-export default async function InstagramPostsPage({ searchParams }: PageProps) {
+export default async function PinsPage({ searchParams }: PageProps) {
   await requireAdminSession();
   const params = (await searchParams) ?? {};
   const page = Math.max(Number(getParam(params, "page") ?? "1"), 1);
   const pageSize = 25;
-  const result = await createInstagramPostsRepository().list({ page, pageSize });
+  const result = await createPinterestPostsRepository().list({ page, pageSize });
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const supabase = getSupabaseAdmin();
   const listingIds = result.rows.map((row) => row.etsy_listing_id);
@@ -44,8 +42,8 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
     <main className="page">
       <div className="page-heading">
         <div>
-          <h1>Instagram Posts</h1>
-          <p>{result.total} published Instagram posts.</p>
+          <h1>Pinterest Posts</h1>
+          <p>{result.total} published Pinterest pins.</p>
         </div>
       </div>
 
@@ -54,15 +52,15 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
           <thead>
             <tr>
               <th>Etsy Listing</th>
-              <th>Instagram Media ID</th>
-              <th>Media Type</th>
-              <th>Permalink</th>
+              <th>Pinterest Pin ID</th>
+              <th>Board</th>
               <th>Published Date</th>
             </tr>
           </thead>
           <tbody>
             {result.rows.map((post) => {
               const etsyUrl = listingUrls.get(post.etsy_listing_id);
+              const pinUrl = `https://www.pinterest.com/pin/${post.pinterest_pin_id}/`;
 
               return (
                 <tr key={post.id}>
@@ -75,17 +73,12 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
                       post.etsy_listing_id
                     )}
                   </td>
-                  <td>{post.instagram_media_id}</td>
-                  <td>{post.media_type}</td>
                   <td>
-                    {post.instagram_permalink ? (
-                      <a href={post.instagram_permalink} target="_blank" rel="noreferrer">
-                        Open post
-                      </a>
-                    ) : (
-                      "-"
-                    )}
+                    <a href={pinUrl} target="_blank" rel="noreferrer">
+                      {post.pinterest_pin_id}
+                    </a>
                   </td>
+                  <td>{post.pinterest_board_id}</td>
                   <td>{formatDate(post.published_at)}</td>
                 </tr>
               );
@@ -97,7 +90,7 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
       <Pagination
         currentPage={page}
         totalPages={totalPages}
-        getHref={(targetPage) => `/instagram/posts?page=${targetPage}`}
+        getHref={(targetPage) => `/pinterest/posts?page=${targetPage}`}
       />
     </main>
   );

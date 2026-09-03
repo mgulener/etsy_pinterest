@@ -26,11 +26,11 @@ export default async function RootLayout({
             </Link>
             <nav>
               <Link href="/dashboard">Dashboard</Link>
-              <Link href="/listings">Listings</Link>
-              <Link href="/queue">Pin Queue</Link>
-              <Link href="/pins">Pins</Link>
-              <Link href="/instagram/queue">IG Queue</Link>
-              <Link href="/instagram/posts">Instagram</Link>
+              <Link href="/etsy/listings">Etsy Listings</Link>
+              <Link href="/pinterest/queue">Pinterest Queue</Link>
+              <Link href="/pinterest/posts">Pinterest Posts</Link>
+              <Link href="/instagram/queue">Instagram Queue</Link>
+              <Link href="/instagram/posts">Instagram Posts</Link>
               <Link href="/privacy">Privacy</Link>
             </nav>
             <form action={logoutAction}>

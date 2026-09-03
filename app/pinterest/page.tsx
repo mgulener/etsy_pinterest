@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function LegacyPinsPage() {
+export default function PinterestPage() {
   redirect("/pinterest/posts");
 }
