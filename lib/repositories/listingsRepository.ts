@@ -15,6 +15,7 @@ export type ListingsRepository = {
   count(): Promise<number>;
   getExistingEtsyListingIds(ids: number[]): Promise<Set<number>>;
   upsertKnownListing(listing: NormalizedEtsyListing): Promise<void>;
+  upsertKnownListings(listings: NormalizedEtsyListing[]): Promise<void>;
   updateLastSeen(listing: NormalizedEtsyListing): Promise<void>;
   list(params: {
     page: number;
@@ -91,6 +92,32 @@ export function createListingsRepository(): ListingsRepository {
 
       if (error) {
         throw new Error(`Failed to upsert Etsy listing ${listing.etsyListingId}: ${error.message}`);
+      }
+    },
+
+    async upsertKnownListings(listings) {
+      if (listings.length === 0) {
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const chunkSize = 500;
+
+      for (let i = 0; i < listings.length; i += chunkSize) {
+        const chunk = listings.slice(i, i + chunkSize);
+        const { error } = await supabase.from("etsy_listings").upsert(
+          chunk.map((listing) => ({
+            ...toListingRow(listing),
+            last_seen_at: now
+          })),
+          {
+            onConflict: "etsy_listing_id"
+          }
+        );
+
+        if (error) {
+          throw new Error(`Failed to batch upsert Etsy listings: ${error.message}`);
+        }
       }
     },
 

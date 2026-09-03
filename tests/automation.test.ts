@@ -73,6 +73,10 @@ class MemoryListingsRepository implements SyncListingsRepository {
     this.listings.set(listing.etsyListingId, listing);
   }
 
+  async upsertKnownListings(listings: NormalizedEtsyListing[]) {
+    listings.forEach((listing) => this.listings.set(listing.etsyListingId, listing));
+  }
+
   async updateLastSeen(listing: NormalizedEtsyListing) {
     this.listings.set(listing.etsyListingId, listing);
   }

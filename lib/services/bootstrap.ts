@@ -39,24 +39,17 @@ export async function bootstrapExistingListingsWithDependencies(input: {
 
   const etsyListings = await input.etsy.getAllActiveListings();
   const normalizedListings = etsyListings.map(normalizeEtsyListing);
-  let saved = 0;
   const errors: BootstrapResult["errors"] = [];
 
-  for (const listing of normalizedListings) {
-    try {
-      await input.listingsRepository.upsertKnownListing(listing);
-      saved += 1;
-      logger.info("BOOTSTRAP", "Known listing saved without queueing", {
-        etsyListingId: listing.etsyListingId
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unknown bootstrap error";
-      errors.push({ etsyListingId: listing.etsyListingId, message });
-      logger.error("BOOTSTRAP", "Listing bootstrap failed", {
-        etsyListingId: listing.etsyListingId,
-        message
-      });
-    }
+  try {
+    await input.listingsRepository.upsertKnownListings(normalizedListings);
+    logger.info("BOOTSTRAP", "Known listings saved without queueing", {
+      count: normalizedListings.length
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown bootstrap error";
+    errors.push({ etsyListingId: 0, message });
+    logger.error("BOOTSTRAP", "Batch bootstrap failed", { message });
   }
 
   if (errors.length === 0) {
@@ -67,7 +60,7 @@ export async function bootstrapExistingListingsWithDependencies(input: {
     mode: "bootstrap",
     skipped: false,
     fetched: normalizedListings.length,
-    saved,
+    saved: errors.length === 0 ? normalizedListings.length : 0,
     queued: 0,
     errors
   };

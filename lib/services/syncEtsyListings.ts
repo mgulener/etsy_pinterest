@@ -49,30 +49,28 @@ export async function syncEtsyListingsWithDependencies(input: {
   const existingIds = await input.listingsRepository.getExistingEtsyListingIds(
     normalizedListings.map((listing) => listing.etsyListingId)
   );
+  await input.listingsRepository.upsertKnownListings(normalizedListings);
 
-  let known = 0;
-  let created = 0;
+  const known = existingIds.size;
+  const newListings = normalizedListings.filter(
+    (listing) => !existingIds.has(listing.etsyListingId)
+  );
+  const created = newListings.length;
   let queued = 0;
   const errors: SyncEtsyListingsResult["errors"] = [];
 
-  for (const listing of normalizedListings) {
-    try {
-      if (existingIds.has(listing.etsyListingId)) {
-        await input.listingsRepository.updateLastSeen(listing);
-        known += 1;
-        logger.info("SYNC", "Known listing updated", {
-          etsyListingId: listing.etsyListingId
-        });
-        continue;
-      }
+  logger.info("SYNC", "Listings compared with database", {
+    fetched: normalizedListings.length,
+    known,
+    new: newListings.length
+  });
 
-      await input.listingsRepository.upsertKnownListing(listing);
+  for (const listing of newListings) {
+    try {
       const queueResult = await input.queueRepository.enqueueListing(
         listing,
         input.boardId
       );
-
-      created += 1;
 
       if (queueResult === "created") {
         queued += 1;
