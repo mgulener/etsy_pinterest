@@ -1,6 +1,6 @@
 import { getAllActiveListings } from "@/lib/etsy/client";
 import { normalizeEtsyListing } from "@/lib/etsy/listings";
-import { getServerEnv } from "@/lib/config/env";
+import { getRequiredEnv } from "@/lib/config/env";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
@@ -104,13 +104,11 @@ export async function syncEtsyListingsWithDependencies(input: {
 }
 
 export async function syncEtsyListings() {
-  const env = getServerEnv();
-
   return syncEtsyListingsWithDependencies({
     etsy: { getAllActiveListings },
     listingsRepository: createListingsRepository(),
     queueRepository: createPinQueueRepository(),
     settingsRepository: createAppSettingsRepository(),
-    boardId: env.pinterestBoardId
+    boardId: getRequiredEnv("PINTEREST_BOARD_ID")
   });
 }

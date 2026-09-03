@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { clearAdminSession, createAdminSession } from "@/lib/auth/session";
-import { getServerEnv } from "@/lib/config/env";
+import { getRequiredEnv } from "@/lib/config/env";
 
 export type LoginState = {
   error: string;
@@ -10,9 +10,8 @@ export type LoginState = {
 
 export async function loginAction(_previousState: LoginState, formData: FormData) {
   const password = String(formData.get("password") ?? "");
-  const env = getServerEnv();
 
-  if (password !== env.adminPassword) {
+  if (password !== getRequiredEnv("ADMIN_PASSWORD")) {
     return { error: "Invalid password" };
   }
 

@@ -1,14 +1,13 @@
-type RequiredEnvKey =
+export type RequiredEnvKey =
   | "NEXT_PUBLIC_SUPABASE_URL"
   | "SUPABASE_SERVICE_ROLE_KEY"
   | "ETSY_API_KEY"
-  | "ETSY_SHOP_ID"
   | "PINTEREST_ACCESS_TOKEN"
   | "PINTEREST_BOARD_ID"
   | "CRON_SECRET"
   | "ADMIN_PASSWORD";
 
-function getRequiredEnv(key: RequiredEnvKey): string {
+export function getRequiredEnv(key: RequiredEnvKey): string {
   const value = process.env[key];
 
   if (!value) {
@@ -18,7 +17,7 @@ function getRequiredEnv(key: RequiredEnvKey): string {
   return value;
 }
 
-function getOptionalNumber(key: string, fallback: number): number {
+export function getOptionalNumber(key: string, fallback: number): number {
   const rawValue = process.env[key];
 
   if (!rawValue) {
@@ -42,7 +41,7 @@ export function getServerEnv() {
     etsyAccessToken: process.env.ETSY_ACCESS_TOKEN,
     etsyRefreshToken: process.env.ETSY_REFRESH_TOKEN,
     etsyRedirectUri: process.env.ETSY_REDIRECT_URI,
-    etsyShopId: getRequiredEnv("ETSY_SHOP_ID"),
+    etsyShopId: process.env.ETSY_SHOP_ID,
     pinterestAccessToken: getRequiredEnv("PINTEREST_ACCESS_TOKEN"),
     pinterestBoardId: getRequiredEnv("PINTEREST_BOARD_ID"),
     cronSecret: getRequiredEnv("CRON_SECRET"),

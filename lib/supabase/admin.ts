@@ -1,16 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
-import { getServerEnv } from "@/lib/config/env";
+import { getRequiredEnv } from "@/lib/config/env";
 import type { Database } from "./types";
 
 let adminClient: ReturnType<typeof createClient<Database>> | null = null;
 
 export function getSupabaseAdmin() {
   if (!adminClient) {
-    const env = getServerEnv();
-
     adminClient = createClient<Database>(
-      env.supabaseUrl,
-      env.supabaseServiceRoleKey,
+      getRequiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      getRequiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
       {
         auth: {
           persistSession: false,

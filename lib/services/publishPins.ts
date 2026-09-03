@@ -1,4 +1,4 @@
-import { getServerEnv } from "@/lib/config/env";
+import { getOptionalNumber } from "@/lib/config/env";
 import { createPin } from "@/lib/pinterest/pins";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
@@ -147,14 +147,12 @@ export async function publishPinsWithDependencies(input: {
 }
 
 export async function publishPins() {
-  const env = getServerEnv();
-
   return publishPinsWithDependencies({
     queueRepository: createPinQueueRepository(),
     postsRepository: createPinterestPostsRepository(),
     pinterest: { createPin },
-    maxPinsPerRun: env.maxPinsPerRun,
-    maxRetries: env.maxPinRetries,
-    dryRun: env.dryRun
+    maxPinsPerRun: getOptionalNumber("MAX_PINS_PER_RUN", 10),
+    maxRetries: getOptionalNumber("MAX_PIN_RETRIES", 3),
+    dryRun: process.env.DRY_RUN === "true"
   });
 }

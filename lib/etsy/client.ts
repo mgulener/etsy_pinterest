@@ -1,14 +1,14 @@
-import { getServerEnv } from "@/lib/config/env";
+import { getRequiredEnv } from "@/lib/config/env";
 import { logger } from "@/lib/utils/logger";
-import { getEtsyAccessToken } from "./auth";
+import { getEtsyAccessToken, getEtsyShopId } from "./auth";
 import type { EtsyListing, EtsyListingsResponse } from "./types";
 
 const ETSY_API_URL = "https://api.etsy.com/v3/application";
 const ETSY_PAGE_LIMIT = 100;
 
 export async function getAllActiveListings(): Promise<EtsyListing[]> {
-  const env = getServerEnv();
   const accessToken = await getEtsyAccessToken();
+  const shopId = await getEtsyShopId();
   const listings: EtsyListing[] = [];
   let offset = 0;
   let totalCount: number | null = null;
@@ -19,7 +19,7 @@ export async function getAllActiveListings(): Promise<EtsyListing[]> {
       limit: ETSY_PAGE_LIMIT
     });
 
-    const url = new URL(`${ETSY_API_URL}/shops/${env.etsyShopId}/listings`);
+    const url = new URL(`${ETSY_API_URL}/shops/${shopId}/listings`);
     url.searchParams.set("state", "active");
     url.searchParams.set("limit", String(ETSY_PAGE_LIMIT));
     url.searchParams.set("offset", String(offset));
@@ -28,7 +28,7 @@ export async function getAllActiveListings(): Promise<EtsyListing[]> {
     const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
-        "x-api-key": env.etsyApiKey
+        "x-api-key": getRequiredEnv("ETSY_API_KEY")
       },
       cache: "no-store"
     });

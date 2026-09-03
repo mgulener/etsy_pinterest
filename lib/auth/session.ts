@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { getServerEnv } from "@/lib/config/env";
+import { getRequiredEnv } from "@/lib/config/env";
 
 const ADMIN_COOKIE = "etsy_pinterest_admin";
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
@@ -29,10 +29,9 @@ function base64UrlDecode(input: string) {
 }
 
 async function sign(payload: string) {
-  const env = getServerEnv();
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(env.adminPassword),
+    new TextEncoder().encode(getRequiredEnv("ADMIN_PASSWORD")),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
