@@ -31,9 +31,9 @@ This version replaces that with:
 
 ```text
 app/
-  api/cron/sync-etsy/route.ts
-  api/cron/publish-pins/route.ts
-  api/cron/publish-instagram/route.ts
+  api/cron/etsy/sync/route.ts
+  api/cron/pinterest/publish/route.ts
+  api/cron/instagram/publish/route.ts
   api/etsy/sync/route.ts
   api/pinterest/publish/route.ts
   api/instagram/publish/route.ts
@@ -72,8 +72,6 @@ Canonical dashboard routes:
 /privacy
 ```
 
-Legacy routes such as `/listings`, `/queue`, `/pins`, `/instagram`, and `/instagram-queue` redirect to their canonical channel paths.
-
 Canonical manual API routes:
 
 ```text
@@ -81,8 +79,6 @@ POST /api/etsy/sync
 POST /api/pinterest/publish
 POST /api/instagram/publish
 ```
-
-Legacy API routes `/api/sync`, `/api/pins`, and `/api/instagram` remain as compatibility wrappers.
 
 ## Environment variables
 
@@ -200,7 +196,7 @@ Sign in to the dashboard, click `Connect Etsy`, approve the requested `listings_
 Vercel Cron calls:
 
 ```text
-GET /api/cron/sync-etsy
+GET /api/cron/etsy/sync
 ```
 
 The service:
@@ -220,7 +216,7 @@ It never uses Etsy timestamps, state transitions, active timestamps, or renew ti
 Vercel Cron calls:
 
 ```text
-GET /api/cron/publish-pins
+GET /api/cron/pinterest/publish
 ```
 
 The service:
@@ -298,9 +294,9 @@ Token notes:
 `vercel.json` configures Hobby-plan-compatible daily cron jobs:
 
 ```text
-/api/cron/sync-etsy     0 3 * * *
-/api/cron/publish-pins  0 4 * * *
-/api/cron/publish-instagram  0 5 * * *
+/api/cron/etsy/sync            0 3 * * *
+/api/cron/pinterest/publish    0 4 * * *
+/api/cron/instagram/publish    0 5 * * *
 ```
 
 Vercel Hobby accounts only allow daily cron schedules. On a Pro plan, you can change these back to a more active cadence such as sync every 6 hours and publish every hour. Vercel cron jobs run on production deployments. Set the same environment variables in the Vercel project settings.
@@ -322,7 +318,7 @@ x-cron-secret: <CRON_SECRET>
 1. Set `DRY_RUN=true`.
 2. Run bootstrap from the dashboard.
 3. Create one new Etsy listing.
-4. Click `Sync Etsy Now` or wait for `/api/cron/sync-etsy`.
+4. Click `Sync Etsy Now` or wait for `/api/cron/etsy/sync`.
 5. Confirm one pending queue item appears.
 6. Click `Publish Pins Now` or `Publish Instagram Now`.
 7. Confirm logs show `[DRY RUN] Would publish...` and no Pinterest Pin is created.

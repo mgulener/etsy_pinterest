@@ -4,15 +4,15 @@
   "outputDirectory": null,
   "crons": [
     {
-      "path": "/api/cron/sync-etsy",
+      "path": "/api/cron/etsy/sync",
       "schedule": "0 3 * * *"
     },
     {
-      "path": "/api/cron/publish-pins",
+      "path": "/api/cron/pinterest/publish",
       "schedule": "0 4 * * *"
     },
     {
-      "path": "/api/cron/publish-instagram",
+      "path": "/api/cron/instagram/publish",
       "schedule": "0 5 * * *"
     }
   ]

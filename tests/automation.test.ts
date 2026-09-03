@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { getAllActiveListings } from "../lib/etsy/client";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
@@ -19,6 +21,8 @@ import type {
   SyncQueueRepository
 } from "../lib/services/types";
 import type { InstagramQueueRow, PinQueueRow } from "../lib/supabase/types";
+
+const projectRoot = process.cwd();
 
 function etsyListing(id: number, state = "active"): EtsyListing {
   return {
@@ -322,6 +326,57 @@ class MemoryInstagramPostsRepository implements InstagramPublisherPostsRepositor
     this.mediaTypes.set(input.etsyListingId, input.mediaType);
   }
 }
+
+test("canonical route architecture has no legacy app routes", () => {
+  const expectedRoutes = [
+    "app/api/cron/etsy/sync/route.ts",
+    "app/api/cron/pinterest/publish/route.ts",
+    "app/api/cron/instagram/publish/route.ts",
+    "app/api/etsy/sync/route.ts",
+    "app/api/pinterest/publish/route.ts",
+    "app/api/instagram/publish/route.ts",
+    "app/etsy/listings/page.tsx",
+    "app/pinterest/queue/page.tsx",
+    "app/pinterest/posts/page.tsx",
+    "app/instagram/queue/page.tsx",
+    "app/instagram/posts/page.tsx"
+  ];
+  const forbiddenRoutes = [
+    "app/api/cron/sync-etsy/route.ts",
+    "app/api/cron/publish-pins/route.ts",
+    "app/api/cron/publish-instagram/route.ts",
+    "app/api/sync/route.ts",
+    "app/api/pins/route.ts",
+    "app/api/instagram/route.ts",
+    "app/listings/page.tsx",
+    "app/queue/page.tsx",
+    "app/pins/page.tsx",
+    "app/instagram/page.tsx",
+    "app/instagram-queue/page.tsx",
+    "lib/services/publishPins.ts",
+    "lib/services/publishInstagram.ts"
+  ];
+  const vercelConfig = JSON.parse(
+    readFileSync(join(projectRoot, "vercel.json"), "utf8")
+  ) as { crons: Array<{ path: string }> };
+
+  expectedRoutes.forEach((route) => {
+    assert.equal(existsSync(join(projectRoot, route)), true, `${route} should exist`);
+  });
+
+  forbiddenRoutes.forEach((route) => {
+    assert.equal(existsSync(join(projectRoot, route)), false, `${route} should not exist`);
+  });
+
+  assert.deepEqual(
+    vercelConfig.crons.map((cron) => cron.path),
+    [
+      "/api/cron/etsy/sync",
+      "/api/cron/pinterest/publish",
+      "/api/cron/instagram/publish"
+    ]
+  );
+});
 
 test("new listing enters the Pinterest queue", async () => {
   const listingsRepository = new MemoryListingsRepository();
