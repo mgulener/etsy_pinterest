@@ -393,6 +393,26 @@ tr:last-child td {
   text-transform: uppercase;
 }
 
+.legal-page {
+  max-width: 840px;
+}
+
+.legal-section {
+  border-top: 1px solid var(--border);
+  padding: 22px 0;
+}
+
+.legal-section h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.legal-section p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
 @media (max-width: 780px) {
   .app-header {
     align-items: flex-start;

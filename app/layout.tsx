@@ -29,6 +29,7 @@ export default async function RootLayout({
               <Link href="/listings">Listings</Link>
               <Link href="/queue">Queue</Link>
               <Link href="/pins">Pins</Link>
+              <Link href="/privacy">Privacy</Link>
             </nav>
             <form action={logoutAction}>
               <button className="ghost-button" type="submit">
