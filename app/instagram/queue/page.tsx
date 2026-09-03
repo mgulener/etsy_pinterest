@@ -2,7 +2,8 @@ import { Pagination } from "@/app/components/Pagination";
 import {
   cancelInstagramQueueItemAction,
   retryAllFailedInstagramAction,
-  retryInstagramQueueItemAction
+  retryInstagramQueueItemAction,
+  updateInstagramQueueItemAction
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
@@ -26,6 +27,10 @@ function formatDate(value: string | null) {
   return value
     ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
     : "-";
+}
+
+function getMediaCount(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 export default async function InstagramQueuePage({ searchParams }: PageProps) {
@@ -75,6 +80,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
               <th>Status</th>
               <th>Attempts</th>
               <th>Mode</th>
+              <th>Media</th>
               <th>Scheduled At</th>
               <th>Caption</th>
               <th>Last Error</th>
@@ -100,8 +106,34 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                 </td>
                 <td>{item.attempt_count}</td>
                 <td>{item.post_mode}</td>
+                <td>{getMediaCount(item.media_urls)}</td>
                 <td>{formatDate(item.scheduled_at)}</td>
-                <td className="muted caption-cell">{item.caption}</td>
+                <td className="caption-cell">
+                  {item.status === "pending" || item.status === "failed" || item.status === "cancelled" ? (
+                    <form className="caption-form" action={updateInstagramQueueItemAction}>
+                      <input type="hidden" name="id" value={item.id} />
+                      <textarea
+                        name="caption"
+                        defaultValue={item.caption}
+                        maxLength={2200}
+                        rows={8}
+                      />
+                      <div className="caption-controls">
+                        <select name="postMode" defaultValue={item.post_mode}>
+                          <option value="single">Single</option>
+                          <option value="carousel" disabled={getMediaCount(item.media_urls) < 2}>
+                            Carousel
+                          </option>
+                        </select>
+                        <SubmitButton className="ghost-button" pendingText="Saving...">
+                          Save
+                        </SubmitButton>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="muted caption-preview">{item.caption}</div>
+                  )}
+                </td>
                 <td className="muted">{item.last_error ?? "-"}</td>
                 <td>
                   <div className="inline-form">

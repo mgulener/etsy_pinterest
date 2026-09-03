@@ -16,6 +16,11 @@ export type InstagramQueuePageResult = {
 export type InstagramQueueRepository = {
   countByStatus(status: PinQueueStatus): Promise<number>;
   enqueueListing(listing: NormalizedEtsyListing): Promise<"created" | "duplicate">;
+  updateDetails(input: {
+    id: string;
+    caption: string;
+    postMode: InstagramPostMode;
+  }): Promise<void>;
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
   markPublished(id: string): Promise<void>;
@@ -83,6 +88,21 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
 
       return "created";
+    },
+
+    async updateDetails(input) {
+      const { error } = await supabase
+        .from("instagram_queue")
+        .update({
+          caption: input.caption.slice(0, 2200),
+          post_mode: input.postMode
+        })
+        .eq("id", input.id)
+        .in("status", ["pending", "failed", "cancelled"]);
+
+      if (error) {
+        throw new Error(`Failed to update Instagram queue item ${input.id}: ${error.message}`);
+      }
     },
 
     async listPending(limit) {

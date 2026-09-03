@@ -1,4 +1,6 @@
 import { Pagination } from "@/app/components/Pagination";
+import { queueInstagramPostAgainAction } from "@/app/actions/admin";
+import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -58,6 +60,7 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
               <th>Media Type</th>
               <th>Permalink</th>
               <th>Published Date</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -87,6 +90,14 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
                     )}
                   </td>
                   <td>{formatDate(post.published_at)}</td>
+                  <td>
+                    <form action={queueInstagramPostAgainAction}>
+                      <input type="hidden" name="id" value={post.id} />
+                      <SubmitButton className="ghost-button" pendingText="Queueing...">
+                        Queue Again
+                      </SubmitButton>
+                    </form>
+                  </td>
                 </tr>
               );
             })}

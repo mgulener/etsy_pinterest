@@ -9,6 +9,8 @@ export type InstagramPostsPageResult = {
 export type InstagramPostsRepository = {
   count(): Promise<number>;
   findByEtsyListingId(etsyListingId: number): Promise<InstagramPostRow | null>;
+  findById(id: string): Promise<InstagramPostRow | null>;
+  deleteById(id: string): Promise<void>;
   createPost(input: {
     etsyListingId: number;
     etsyImageId: number | null;
@@ -52,6 +54,28 @@ export function createInstagramPostsRepository(): InstagramPostsRepository {
       }
 
       return data;
+    },
+
+    async findById(id) {
+      const { data, error } = await supabase
+        .from("instagram_posts")
+        .select("*")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) {
+        throw new Error(`Failed to find Instagram post ${id}: ${error.message}`);
+      }
+
+      return data;
+    },
+
+    async deleteById(id) {
+      const { error } = await supabase.from("instagram_posts").delete().eq("id", id);
+
+      if (error) {
+        throw new Error(`Failed to delete Instagram post ${id}: ${error.message}`);
+      }
     },
 
     async createPost(input) {

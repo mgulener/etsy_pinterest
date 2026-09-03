@@ -32,7 +32,8 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -212,13 +213,22 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   min-height: 38px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #fff;
   padding: 0 10px;
   color: var(--text);
+}
+
+textarea {
+  width: min(520px, 70vw);
+  min-height: 150px;
+  padding: 10px;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .table-shell {
@@ -277,8 +287,23 @@ tr:last-child td {
 }
 
 .caption-cell {
-  max-width: 360px;
+  min-width: 380px;
+  max-width: 560px;
+}
+
+.caption-preview {
   white-space: pre-wrap;
+}
+
+.caption-form {
+  display: grid;
+  gap: 8px;
+}
+
+.caption-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .error-text {
