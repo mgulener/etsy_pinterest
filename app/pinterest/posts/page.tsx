@@ -48,7 +48,7 @@ export default async function PinsPage({ searchParams }: PageProps) {
       </div>
 
       <div className="table-shell">
-        <table>
+        <table className="table table-hover align-middle mb-0">
           <thead>
             <tr>
               <th>Etsy Listing</th>

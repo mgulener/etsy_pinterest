@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { logoutAction } from "./login/actions";
 import { isAdminSessionValid } from "@/lib/auth/session";
+import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,11 +21,11 @@ export default async function RootLayout({
     <html lang="en">
       <body>
         {isAuthenticated ? (
-          <header className="app-header">
-            <Link href="/dashboard" className="brand">
+          <header className="app-header navbar navbar-expand-xl">
+            <Link href="/dashboard" className="brand navbar-brand">
               Etsy Social Automation
             </Link>
-            <nav>
+            <nav className="navbar-nav flex-row flex-wrap">
               <Link href="/dashboard">Dashboard</Link>
               <Link href="/etsy/listings">Etsy Listings</Link>
               <Link href="/pinterest/queue">Pinterest Queue</Link>
@@ -34,7 +35,7 @@ export default async function RootLayout({
               <Link href="/privacy">Privacy</Link>
             </nav>
             <form action={logoutAction}>
-              <button className="ghost-button" type="submit">
+              <button className="ghost-button btn btn-outline-secondary" type="submit">
                 Sign out
               </button>
             </form>

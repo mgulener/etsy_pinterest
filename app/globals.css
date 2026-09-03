@@ -1,15 +1,16 @@
 :root {
-  --bg: #f7f7f4;
+  --bg: #f4f6f8;
   --panel: #ffffff;
-  --panel-soft: #f1f4f2;
-  --border: #dfe4df;
-  --text: #17211b;
-  --muted: #637066;
-  --accent: #216e5a;
-  --accent-dark: #174f41;
-  --danger: #b33939;
-  --warning: #946200;
-  --success: #1e6f42;
+  --panel-soft: #f8fafc;
+  --border: #e2e8f0;
+  --text: #172033;
+  --muted: #64748b;
+  --accent: #0f766e;
+  --accent-dark: #115e59;
+  --danger: #dc2626;
+  --warning: #b45309;
+  --success: #15803d;
+  --shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
 }
 
 * {
@@ -18,7 +19,9 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    linear-gradient(180deg, #eef6f4 0, rgba(238, 246, 244, 0) 280px),
+    var(--bg);
   color: var(--text);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -44,7 +47,7 @@ button,
   align-items: center;
   justify-content: center;
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--accent);
   color: #fff;
   padding: 0 14px;
@@ -64,6 +67,11 @@ button:disabled {
   color: var(--text);
 }
 
+.ghost-button:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
 .danger-button {
   border-color: var(--danger);
   background: var(--danger);
@@ -74,37 +82,47 @@ button:disabled {
   top: 0;
   z-index: 10;
   display: flex;
-  min-height: 58px;
+  min-height: 64px;
   align-items: center;
-  gap: 24px;
-  border-bottom: 1px solid var(--border);
+  gap: 20px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
   background: rgba(255, 255, 255, 0.92);
-  padding: 0 28px;
-  backdrop-filter: blur(10px);
+  padding: 0 24px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(14px);
 }
 
 .brand {
+  color: var(--text);
   font-weight: 800;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .app-header nav {
   display: flex;
   flex: 1;
-  gap: 16px;
+  gap: 6px;
 }
 
 .app-header nav a {
+  border-radius: 999px;
   color: var(--muted);
   font-size: 14px;
   font-weight: 650;
+  padding: 8px 11px;
   text-decoration: none;
 }
 
+.app-header nav a:hover {
+  background: #eef2f7;
+  color: var(--text);
+}
+
 .page {
-  width: min(1180px, calc(100% - 32px));
+  width: min(1880px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 32px 0 56px;
+  padding: 28px 0 56px;
 }
 
 .page-heading {
@@ -117,8 +135,9 @@ button:disabled {
 
 .page-heading h1 {
   margin: 0;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1.12;
+  letter-spacing: 0;
 }
 
 .page-heading p {
@@ -130,6 +149,7 @@ button:disabled {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  justify-content: flex-end;
 }
 
 .stats-grid {
@@ -143,12 +163,13 @@ button:disabled {
 .table-shell,
 .login-panel {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 .stat-card {
-  padding: 18px;
+  padding: 20px;
 }
 
 .stat-card span {
@@ -177,8 +198,8 @@ button:disabled {
 
 .status-banner {
   border: 1px solid #bfd8ca;
-  border-radius: 8px;
-  background: #e9f5ee;
+  border-radius: 10px;
+  background: #ecfdf5;
   color: var(--success);
   margin-bottom: 18px;
   padding: 13px 16px;
@@ -217,14 +238,14 @@ select,
 textarea {
   min-height: 38px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   background: #fff;
   padding: 0 10px;
   color: var(--text);
 }
 
 textarea {
-  width: min(520px, 70vw);
+  width: min(620px, 58vw);
   min-height: 150px;
   padding: 10px;
   resize: vertical;
@@ -233,24 +254,25 @@ textarea {
 
 .table-shell {
   overflow-x: auto;
+  border-radius: 12px;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 820px;
+  min-width: 1280px;
 }
 
 th,
 td {
   border-bottom: 1px solid var(--border);
-  padding: 12px 14px;
+  padding: 14px 16px;
   text-align: left;
   vertical-align: middle;
 }
 
 th {
-  background: var(--panel-soft);
+  background: #f8fafc;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -269,7 +291,7 @@ tr:last-child td {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  min-width: 410px;
+  min-width: 340px;
 }
 
 .thumb {
@@ -277,7 +299,7 @@ tr:last-child td {
   height: 150px;
   flex: 0 0 auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   background: var(--panel-soft);
   object-fit: cover;
 }
@@ -287,8 +309,8 @@ tr:last-child td {
 }
 
 .caption-cell {
-  min-width: 380px;
-  max-width: 560px;
+  min-width: 460px;
+  max-width: 680px;
 }
 
 .caption-preview {

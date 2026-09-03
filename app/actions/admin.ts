@@ -38,7 +38,7 @@ export async function publishNowAction() {
   const result = await publishPinterestPins();
   revalidatePath("/");
   redirect(
-    `/dashboard?action=publish&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
+    `/pinterest/queue?action=publish&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
   );
 }
 
@@ -47,7 +47,7 @@ export async function publishInstagramNowAction() {
   const result = await publishInstagramPosts();
   revalidatePath("/");
   redirect(
-    `/dashboard?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
+    `/instagram/queue?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
   );
 }
 

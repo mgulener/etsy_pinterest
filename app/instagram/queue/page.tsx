@@ -1,6 +1,7 @@
 import { Pagination } from "@/app/components/Pagination";
 import {
   cancelInstagramQueueItemAction,
+  publishInstagramNowAction,
   retryAllFailedInstagramAction,
   retryInstagramQueueItemAction,
   updateInstagramQueueItemAction
@@ -29,6 +30,14 @@ function formatDate(value: string | null) {
     : "-";
 }
 
+function buildActionMessage(params: Record<string, string | string[] | undefined>) {
+  if (getParam(params, "action") !== "publish-instagram") {
+    return null;
+  }
+
+  return `Instagram publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
+}
+
 function getMediaCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0;
 }
@@ -45,6 +54,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
   const result = await createInstagramQueueRepository().list({ page, pageSize, status });
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const statusQuery = status ? `status=${status}&` : "";
+  const actionMessage = buildActionMessage(params);
 
   return (
     <main className="page">
@@ -53,10 +63,19 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
           <h1>Instagram Queue</h1>
           <p>{result.total} queue items.</p>
         </div>
-        <form action={retryAllFailedInstagramAction}>
-          <SubmitButton pendingText="Retrying...">Retry Failed</SubmitButton>
-        </form>
+        <div className="actions">
+          <form action={publishInstagramNowAction}>
+            <SubmitButton pendingText="Publishing Instagram...">
+              Publish Instagram Now
+            </SubmitButton>
+          </form>
+          <form action={retryAllFailedInstagramAction}>
+            <SubmitButton className="ghost-button" pendingText="Retrying...">Retry Failed</SubmitButton>
+          </form>
+        </div>
       </div>
+
+      {actionMessage ? <section className="status-banner">{actionMessage}</section> : null}
 
       <div className="toolbar">
         <form>
@@ -73,7 +92,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
       </div>
 
       <div className="table-shell">
-        <table>
+        <table className="table table-hover align-middle mb-0">
           <thead>
             <tr>
               <th>Listing</th>

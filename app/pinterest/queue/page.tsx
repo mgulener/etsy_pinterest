@@ -1,6 +1,7 @@
 import { Pagination } from "@/app/components/Pagination";
 import {
   cancelQueueItemAction,
+  publishNowAction,
   retryAllFailedAction,
   retryQueueItemAction
 } from "@/app/actions/admin";
@@ -26,6 +27,14 @@ function formatDate(value: string | null) {
   return value ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
+function buildActionMessage(params: Record<string, string | string[] | undefined>) {
+  if (getParam(params, "action") !== "publish") {
+    return null;
+  }
+
+  return `Pinterest publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
+}
+
 export default async function QueuePage({ searchParams }: PageProps) {
   await requireAdminSession();
   const params = (await searchParams) ?? {};
@@ -38,6 +47,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const result = await createPinQueueRepository().list({ page, pageSize, status });
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const statusQuery = status ? `status=${status}&` : "";
+  const actionMessage = buildActionMessage(params);
 
   return (
     <main className="page">
@@ -46,10 +56,17 @@ export default async function QueuePage({ searchParams }: PageProps) {
           <h1>Pinterest Queue</h1>
           <p>{result.total} queue items.</p>
         </div>
-        <form action={retryAllFailedAction}>
-          <SubmitButton pendingText="Retrying...">Retry Failed</SubmitButton>
-        </form>
+        <div className="actions">
+          <form action={publishNowAction}>
+            <SubmitButton pendingText="Publishing pins...">Publish Pins Now</SubmitButton>
+          </form>
+          <form action={retryAllFailedAction}>
+            <SubmitButton className="ghost-button" pendingText="Retrying...">Retry Failed</SubmitButton>
+          </form>
+        </div>
       </div>
+
+      {actionMessage ? <section className="status-banner">{actionMessage}</section> : null}
 
       <div className="toolbar">
         <form>
@@ -66,7 +83,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
       </div>
 
       <div className="table-shell">
-        <table>
+        <table className="table table-hover align-middle mb-0">
           <thead>
             <tr>
               <th>Listing</th>

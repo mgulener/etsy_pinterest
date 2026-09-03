@@ -1,7 +1,5 @@
 import {
   bootstrapAction,
-  publishInstagramNowAction,
-  publishNowAction,
   syncNowAction
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
@@ -33,14 +31,6 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
 
   if (action === "sync") {
     return `Etsy sync finished. Fetched ${getParam(params, "fetched") ?? 0}, known ${getParam(params, "known") ?? 0}, Pinterest queued ${getParam(params, "queued") ?? 0}, Instagram queued ${getParam(params, "instagramQueued") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
-  }
-
-  if (action === "publish") {
-    return `Pinterest publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
-  }
-
-  if (action === "publish-instagram") {
-    return `Instagram publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
   }
 
   if (getParam(params, "etsy") === "connected") {
@@ -95,14 +85,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           </a>
           <form action={syncNowAction}>
             <SubmitButton pendingText="Syncing Etsy...">Sync Etsy Now</SubmitButton>
-          </form>
-          <form action={publishNowAction}>
-            <SubmitButton pendingText="Publishing pins...">Publish Pins Now</SubmitButton>
-          </form>
-          <form action={publishInstagramNowAction}>
-            <SubmitButton pendingText="Publishing Instagram...">
-              Publish Instagram Now
-            </SubmitButton>
           </form>
         </div>
       </div>
