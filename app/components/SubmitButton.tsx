@@ -6,17 +6,19 @@ type SubmitButtonProps = {
   children: React.ReactNode;
   pendingText: string;
   className?: string;
+  disabled?: boolean;
 };
 
 export function SubmitButton({
   children,
   pendingText,
-  className
+  className,
+  disabled = false
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
 
   return (
-    <button className={className} type="submit" disabled={pending} aria-busy={pending}>
+    <button className={className} type="submit" disabled={disabled || pending} aria-busy={pending}>
       {pending ? pendingText : children}
     </button>
   );

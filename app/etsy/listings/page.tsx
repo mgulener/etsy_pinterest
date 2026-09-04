@@ -5,6 +5,8 @@ import {
 import { Pagination } from "@/app/components/Pagination";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
+import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
+import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 
 export const dynamic = "force-dynamic";
@@ -24,11 +26,16 @@ export default async function ListingsPage({ searchParams }: PageProps) {
   const search = getParam(params, "search") ?? "";
   const page = Math.max(Number(getParam(params, "page") ?? "1"), 1);
   const pageSize = 25;
-  const result = await createListingsRepository().list({
-    page,
-    pageSize,
-    search: search.trim() || undefined
-  });
+  const [result, settings] = await Promise.all([
+    createListingsRepository().list({
+      page,
+      pageSize,
+      search: search.trim() || undefined
+    }),
+    getCurrentUserSettings()
+  ]);
+  const initialSyncCompleted = await createAppSettingsRepository().isInitialSyncCompleted();
+  const hasPublishActions = settings.pinterestEnabled || settings.instagramEnabled;
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
 
   return (
@@ -55,7 +62,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
               <th>State</th>
               <th>Pinterest</th>
               <th>Instagram</th>
-              <th className="actions-column">Publish</th>
+              {hasPublishActions ? <th className="actions-column">Publish</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -90,30 +97,38 @@ export default async function ListingsPage({ searchParams }: PageProps) {
                     {listing.instagram_status}
                   </span>
                 </td>
-                <td>
-                  <div className="platform-actions" aria-label={`Publish actions for ${listing.title}`}>
-                    <form action={queuePinterestListingAction} title="Add to Pinterest queue">
-                      <input type="hidden" name="etsyListingId" value={listing.etsy_listing_id} />
-                      <SubmitButton
-                        className="icon-button pinterest-action"
-                        pendingText="..."
-                      >
-                        <span aria-hidden="true">P</span>
-                        <span className="sr-only">Add to Pinterest queue</span>
-                      </SubmitButton>
-                    </form>
-                    <form action={queueInstagramListingAction} title="Add to Instagram queue">
-                      <input type="hidden" name="etsyListingId" value={listing.etsy_listing_id} />
-                      <SubmitButton
-                        className="icon-button instagram-action"
-                        pendingText="..."
-                      >
-                        <span aria-hidden="true">IG</span>
-                        <span className="sr-only">Add to Instagram queue</span>
-                      </SubmitButton>
-                    </form>
-                  </div>
-                </td>
+                {hasPublishActions ? (
+                  <td>
+                    <div className="platform-actions" aria-label={`Publish actions for ${listing.title}`}>
+                      {settings.pinterestEnabled ? (
+                        <form action={queuePinterestListingAction} title="Add to Pinterest queue">
+                          <input type="hidden" name="etsyListingId" value={listing.etsy_listing_id} />
+                          <SubmitButton
+                            className="icon-button pinterest-action"
+                            pendingText="..."
+                            disabled={!initialSyncCompleted}
+                          >
+                            <span aria-hidden="true">P</span>
+                            <span className="sr-only">Add to Pinterest queue</span>
+                          </SubmitButton>
+                        </form>
+                      ) : null}
+                      {settings.instagramEnabled ? (
+                        <form action={queueInstagramListingAction} title="Add to Instagram queue">
+                          <input type="hidden" name="etsyListingId" value={listing.etsy_listing_id} />
+                          <SubmitButton
+                            className="icon-button instagram-action"
+                            pendingText="..."
+                            disabled={!initialSyncCompleted}
+                          >
+                            <span aria-hidden="true">IG</span>
+                            <span className="sr-only">Add to Instagram queue</span>
+                          </SubmitButton>
+                        </form>
+                      ) : null}
+                    </div>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

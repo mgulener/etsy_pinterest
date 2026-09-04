@@ -37,6 +37,15 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
   return `Pinterest publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
 }
 
+function CancelIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
 function buildPageHref(input: { page: number; status?: PinQueueStatus; search: string }) {
   const params = new URLSearchParams();
 
@@ -161,7 +170,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
                       <form action={cancelQueueItemAction} title="Cancel">
                         <input type="hidden" name="id" value={item.id} />
                         <SubmitButton className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
-                          <span aria-hidden="true">C</span>
+                          <CancelIcon />
                           <span className="sr-only">Cancel</span>
                         </SubmitButton>
                       </form>

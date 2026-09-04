@@ -328,6 +328,16 @@ class MemoryInstagramPostsRepository implements InstagramPublisherPostsRepositor
   }
 }
 
+test("queue action UI uses icons and enabled platform settings", () => {
+  const listingsPage = readFileSync(join(projectRoot, "app/etsy/listings/page.tsx"), "utf8");
+  const pinterestQueuePage = readFileSync(join(projectRoot, "app/pinterest/queue/page.tsx"), "utf8");
+
+  assert.match(listingsPage, /settings\.pinterestEnabled/);
+  assert.match(listingsPage, /settings\.instagramEnabled/);
+  assert.match(pinterestQueuePage, /function CancelIcon/);
+  assert.doesNotMatch(pinterestQueuePage, />C<\/span>/);
+});
+
 test("canonical route architecture has no legacy app routes", () => {
   const expectedRoutes = [
     "app/api/cron/etsy/sync/route.ts",
