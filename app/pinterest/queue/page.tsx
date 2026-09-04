@@ -169,7 +169,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
                     {item.status === "pending" || item.status === "failed" ? (
                       <form action={cancelQueueItemAction} title="Cancel">
                         <input type="hidden" name="id" value={item.id} />
-                        <SubmitButton className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
+                        <SubmitButton className="btn btn-warning btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
                           <CancelIcon />
                           <span className="sr-only">Cancel</span>
                         </SubmitButton>

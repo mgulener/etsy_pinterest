@@ -396,6 +396,15 @@ button:disabled {
   text-decoration: none;
 }
 
+.sync-progress-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
 .stat-card,
 .notice,
 .table-shell,
@@ -481,6 +490,8 @@ textarea {
 
 .table-shell {
   overflow-x: auto;
+  overflow-y: hidden;
+  max-height: none;
   border-radius: 12px;
 }
 
@@ -540,10 +551,10 @@ tr:last-child td {
 }
 
 .thumb-preview {
-  position: absolute;
+  position: fixed;
   top: 50%;
-  left: calc(100% + 12px);
-  z-index: 50;
+  left: 50%;
+  z-index: 1080;
   width: 200px;
   height: 200px;
   border: 1px solid var(--border);
@@ -553,14 +564,14 @@ tr:last-child td {
   object-fit: cover;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-50%) scale(0.96);
+  transform: translate(-50%, -50%) scale(0.96);
   transition: opacity 140ms ease, transform 140ms ease;
 }
 
 .thumb-wrap:hover .thumb-preview,
 .thumb-wrap:focus-within .thumb-preview {
   opacity: 1;
-  transform: translateY(-50%) scale(1);
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .muted {
@@ -597,6 +608,44 @@ tr:last-child td {
 .instagram-action {
   border-color: #d62976;
   background: radial-gradient(circle at 30% 110%, #feda75 0, #fa7e1e 28%, #d62976 54%, #962fbf 76%, #4f5bd5 100%);
+}
+
+.ai-button {
+  border: 0;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 214, 102, 0.96) 0, rgba(255, 214, 102, 0) 34%),
+    linear-gradient(135deg, #f97316 0%, #ec4899 48%, #7c3aed 100%);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(236, 72, 153, 0.26);
+}
+
+.ai-button:hover,
+.ai-button:focus-visible {
+  color: #fff;
+  filter: saturate(1.08) brightness(1.02);
+  box-shadow: 0 12px 26px rgba(124, 58, 237, 0.3);
+}
+
+.ai-button:disabled {
+  color: #fff;
+  filter: grayscale(0.18);
+}
+
+.ai-button-subtle {
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(135deg, #f97316, #ec4899, #7c3aed) border-box;
+  border: 1px solid transparent;
+  color: #9d174d;
+  box-shadow: none;
+}
+
+.ai-button-subtle:hover,
+.ai-button-subtle:focus-visible {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 214, 102, 0.96) 0, rgba(255, 214, 102, 0) 34%),
+    linear-gradient(135deg, #f97316 0%, #ec4899 48%, #7c3aed 100%);
+  color: #fff;
 }
 
 .queue-actions {
@@ -916,6 +965,19 @@ tr:last-child td {
 .caption-dialog textarea {
   width: 100%;
   min-height: 260px;
+}
+
+
+.image-picker-control {
+  width: 1rem;
+  height: 1rem;
+  min-height: 1rem;
+  padding: 0;
+  aspect-ratio: 1 / 1;
+}
+
+.image-picker-control[type="radio"] {
+  border-radius: 50%;
 }
 
 .legal-page {

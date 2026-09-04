@@ -29,7 +29,7 @@ export function ConfirmDeleteButton({
   return (
     <>
       <button
-        className="btn btn-outline-danger btn-sm d-inline-flex align-items-center justify-content-center p-2"
+        className="btn btn-danger btn-sm d-inline-flex align-items-center justify-content-center p-2"
         type="button"
         title="Delete from queue"
         aria-label="Delete from queue"

@@ -2,7 +2,9 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import {
   getInstagramPostMode,
-  resolveInstagramMediaUrls
+  resolveAvailableInstagramMediaUrls,
+  resolveInstagramMediaUrls,
+  selectInstagramMediaUrls
 } from "@/lib/instagram/media";
 import { buildInstagramCaption } from "@/lib/instagram/caption";
 import type { InstagramPostMode } from "@/lib/instagram/types";
@@ -20,6 +22,7 @@ export type InstagramQueueRepository = {
     id: string;
     caption: string;
     postMode: InstagramPostMode;
+    selectedMediaUrls?: string[];
   }): Promise<void>;
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
@@ -67,7 +70,10 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
 
     async enqueueListing(listing) {
       const postMode = await resolvePostMode(listing);
-      const mediaUrls = resolveInstagramMediaUrls(listing, postMode);
+      const availableMediaUrls = resolveAvailableInstagramMediaUrls(listing);
+      const mediaUrls = postMode === "carousel"
+        ? selectInstagramMediaUrls(availableMediaUrls, postMode)
+        : resolveInstagramMediaUrls(listing, postMode);
       const { error } = await supabase.from("instagram_queue").insert({
         etsy_listing_id: listing.etsyListingId,
         etsy_image_id: listing.etsyImageId,
@@ -78,6 +84,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         caption: buildInstagramCaption(listing),
         post_mode: postMode,
         media_urls: mediaUrls,
+        available_media_urls: availableMediaUrls,
         scheduled_at: new Date().toISOString()
       });
 
@@ -93,11 +100,34 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
     },
 
     async updateDetails(input) {
+      const { data: current, error: readError } = await supabase
+        .from("instagram_queue")
+        .select("media_urls, available_media_urls")
+        .eq("id", input.id)
+        .maybeSingle();
+
+      if (readError) {
+        throw new Error(`Failed to read Instagram queue item ${input.id}: ${readError.message}`);
+      }
+
+      const availableMediaUrls = Array.isArray(current?.available_media_urls)
+        ? current.available_media_urls.filter((url): url is string => typeof url === "string")
+        : Array.isArray(current?.media_urls)
+          ? current.media_urls.filter((url): url is string => typeof url === "string")
+          : [];
+      const requestedMediaUrls = input.selectedMediaUrls?.filter((url) =>
+        availableMediaUrls.includes(url)
+      ) ?? [];
+      const mediaUrls = requestedMediaUrls.length > 0
+        ? selectInstagramMediaUrls(requestedMediaUrls, input.postMode, requestedMediaUrls.length)
+        : selectInstagramMediaUrls(availableMediaUrls, input.postMode);
       const { error } = await supabase
         .from("instagram_queue")
         .update({
           caption: input.caption.slice(0, 2200),
-          post_mode: input.postMode
+          post_mode: input.postMode,
+          media_urls: mediaUrls,
+          available_media_urls: availableMediaUrls
         })
         .eq("id", input.id)
         .in("status", ["pending", "failed", "cancelled"]);

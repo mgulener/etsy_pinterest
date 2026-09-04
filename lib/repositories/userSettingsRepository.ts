@@ -21,6 +21,9 @@ export type UserSettings = {
   instagramUserId: string | null;
   instagramPostMode: "single" | "carousel";
   metaApiVersion: string | null;
+  aiCaptionsEnabled: boolean;
+  openaiApiKey: string | null;
+  openaiModel: string | null;
   dryRun: boolean;
   maxPinsPerRun: number;
   maxPinRetries: number;
@@ -49,6 +52,9 @@ type SettingsRow = {
   instagram_user_id: string | null;
   instagram_post_mode: "single" | "carousel";
   meta_api_version: string | null;
+  ai_captions_enabled: boolean;
+  openai_api_key: string | null;
+  openai_model: string | null;
   dry_run: boolean;
   max_pins_per_run: number;
   max_pin_retries: number;
@@ -81,6 +87,9 @@ function fromRow(row: SettingsRow | null): UserSettings {
     instagramUserId: row?.instagram_user_id ?? process.env.INSTAGRAM_USER_ID ?? null,
     instagramPostMode: row?.instagram_post_mode ?? (process.env.INSTAGRAM_POST_MODE === "carousel" ? "carousel" : "single"),
     metaApiVersion: row?.meta_api_version ?? process.env.META_API_VERSION ?? process.env.INSTAGRAM_API_VERSION ?? null,
+    aiCaptionsEnabled: row?.ai_captions_enabled ?? process.env.AI_CAPTIONS_ENABLED === "true",
+    openaiApiKey: row?.openai_api_key ?? process.env.OPENAI_API_KEY ?? null,
+    openaiModel: row?.openai_model ?? process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
     dryRun: row?.dry_run ?? process.env.DRY_RUN === "true",
     maxPinsPerRun: row?.max_pins_per_run ?? getOptionalNumber("MAX_PINS_PER_RUN", 10),
     maxPinRetries: row?.max_pin_retries ?? getOptionalNumber("MAX_PIN_RETRIES", 3),
@@ -138,6 +147,9 @@ export async function saveUserSettings(userId: string, settings: UserSettingsInp
         instagram_user_id: clean(settings.instagramUserId),
         instagram_post_mode: settings.instagramPostMode,
         meta_api_version: clean(settings.metaApiVersion),
+        ai_captions_enabled: settings.aiCaptionsEnabled,
+        openai_api_key: clean(settings.openaiApiKey),
+        openai_model: clean(settings.openaiModel),
         dry_run: settings.dryRun,
         max_pins_per_run: settings.maxPinsPerRun,
         max_pin_retries: settings.maxPinRetries,

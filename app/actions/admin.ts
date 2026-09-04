@@ -2,17 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireAdminSession } from "@/lib/auth/session";
 import { bootstrapExistingListings } from "@/lib/services/bootstrap";
 import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
 import { publishPinterestPins } from "@/lib/services/publishPinterestPins";
-import { syncEtsyListings } from "@/lib/services/syncEtsyListings";
+import { runEtsySyncJob } from "@/lib/services/syncJobRunner";
+import { runInstagramAiCaptionJob } from "@/lib/services/instagramAiCaptionJobRunner";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import { getCurrentUserSettings, requireSetting } from "@/lib/repositories/userSettingsRepository";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { buildInstagramCaption } from "@/lib/instagram/caption";
+import { generateInstagramCaptionWithAI } from "@/lib/instagram/aiCaption";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import type { InstagramPostMode } from "@/lib/instagram/types";
 
@@ -21,17 +25,24 @@ function normalizeListingRow(listing: {
   etsy_listing_id: number;
   etsy_image_id: number | null;
   image_url: string | null;
+  image_urls?: unknown;
   title: string;
   description: string | null;
   url: string | null;
   state: string;
   original_creation_timestamp: number | null;
 }): NormalizedEtsyListing {
+  const imageUrls = Array.isArray(listing.image_urls)
+    ? listing.image_urls.filter((url): url is string => typeof url === "string")
+    : listing.image_url
+      ? [listing.image_url]
+      : [];
+
   return {
     etsyListingId: listing.etsy_listing_id,
     etsyImageId: listing.etsy_image_id,
     imageUrl: listing.image_url,
-    imageUrls: listing.image_url ? [listing.image_url] : [],
+    imageUrls,
     title: listing.title,
     description: listing.description,
     destinationUrl: listing.url,
@@ -73,15 +84,32 @@ export async function bootstrapAction() {
   );
 }
 
-export async function syncNowAction() {
-  await requireAdminSession();
+export async function syncNowAction(formData?: FormData) {
+  const session = await requireAdminSession();
+  const rawLimit = formData?.get("limit");
+  const parsedLimit = rawLimit ? Number(rawLimit) : null;
+  const syncLimit = parsedLimit && Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.floor(parsedLimit))
+    : null;
 
   let destination: string;
 
   try {
-    const result = await syncEtsyListings();
-    revalidatePath("/");
-    destination = `/dashboard?action=sync&fetched=${result.fetched}&known=${result.known}&queued=${result.queued}&instagramQueued=${result.instagramQueued}&errors=${result.errors.length}`;
+    const jobsRepository = createSyncJobsRepository();
+    const activeJob = await jobsRepository.getActiveForUser(session.userId, "etsy_sync");
+    const job = activeJob ?? await jobsRepository.create({
+      userId: session.userId,
+      type: "etsy_sync",
+      message: syncLimit ? `Queued Etsy sync for first ${syncLimit} listings` : "Queued Etsy sync",
+      syncLimit
+    });
+
+    if (job.status === "queued") {
+      after(() => runEtsySyncJob(job.id, session.userId));
+    }
+
+    revalidatePath("/dashboard");
+    destination = `/dashboard?action=sync-started&job=${job.id}`;
   } catch (error) {
     destination = `/dashboard?action=sync-error&message=${encodeURIComponent(toActionErrorMessage(error))}`;
   }
@@ -105,6 +133,38 @@ export async function publishInstagramNowAction() {
   redirect(
     `/instagram/queue?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
   );
+}
+
+export async function generateInstagramCaptionsAction(formData?: FormData) {
+  const session = await requireAdminSession();
+  const rawLimit = formData?.get("limit");
+  const parsedLimit = rawLimit ? Number(rawLimit) : null;
+  const syncLimit = parsedLimit && Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.floor(parsedLimit))
+    : null;
+  let destination: string;
+
+  try {
+    const jobsRepository = createSyncJobsRepository();
+    const activeJob = await jobsRepository.getActiveForUser(session.userId, "instagram_ai_captions");
+    const job = activeJob ?? await jobsRepository.create({
+      userId: session.userId,
+      type: "instagram_ai_captions",
+      message: syncLimit ? `Queued AI captions for first ${syncLimit} Instagram queue items` : "Queued AI captions for Instagram queue",
+      syncLimit
+    });
+
+    if (job.status === "queued") {
+      after(() => runInstagramAiCaptionJob(job.id, session.userId));
+    }
+
+    revalidatePath("/instagram/queue");
+    destination = `/instagram/queue?action=ai-caption-job-started&job=${job.id}`;
+  } catch (error) {
+    destination = `/instagram/queue?action=ai-caption&status=error&message=${encodeURIComponent(toActionErrorMessage(error))}`;
+  }
+
+  redirect(destination);
 }
 
 
@@ -171,12 +231,80 @@ export async function updateInstagramQueueItemAction(formData: FormData) {
   const caption = String(formData.get("caption") ?? "").trim();
   const rawPostMode = String(formData.get("postMode") ?? "single");
   const postMode: InstagramPostMode = rawPostMode === "carousel" ? "carousel" : "single";
+  const selectedMediaUrls = formData
+    .getAll("selectedMediaUrls")
+    .filter((url): url is string => typeof url === "string")
+    .slice(0, 10);
 
   if (id && caption) {
-    await createInstagramQueueRepository().updateDetails({ id, caption, postMode });
+    await createInstagramQueueRepository().updateDetails({
+      id,
+      caption,
+      postMode,
+      selectedMediaUrls
+    });
   }
 
   revalidatePath("/instagram/queue");
+}
+
+export async function regenerateInstagramCaptionAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+  let destination = "/instagram/queue?action=ai-caption&status=success";
+
+  if (!id) {
+    redirect("/instagram/queue?action=ai-caption&status=error&message=Missing%20queue%20item");
+  }
+
+  try {
+    const settings = await getCurrentUserSettings();
+
+    if (!settings.aiCaptionsEnabled) {
+      throw new Error("AI captions are disabled. Enable them in Settings first.");
+    }
+
+    const { data: item, error } = await getSupabaseAdmin()
+      .from("instagram_queue")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to read Instagram queue item: ${error.message}`);
+    }
+
+    if (!item) {
+      throw new Error("Instagram queue item was not found.");
+    }
+
+    const caption = await generateInstagramCaptionWithAI({
+      listing: {
+        title: item.title,
+        description: item.description,
+        destinationUrl: item.destination_url
+      },
+      apiKey: settings.openaiApiKey,
+      model: settings.openaiModel
+    });
+    const selectedMediaUrls = Array.isArray(item.media_urls)
+      ? item.media_urls.filter((url): url is string => typeof url === "string")
+      : [];
+
+    await createInstagramQueueRepository().updateDetails({
+      id,
+      caption,
+      postMode: item.post_mode,
+      selectedMediaUrls
+    });
+
+    revalidatePath("/instagram/queue");
+  } catch (error) {
+    const message = encodeURIComponent(toActionErrorMessage(error));
+    destination = `/instagram/queue?action=ai-caption&status=error&message=${message}`;
+  }
+
+  redirect(destination);
 }
 
 export async function queueInstagramPostAgainAction(formData: FormData) {
@@ -225,7 +353,11 @@ export async function queueInstagramPostAgainAction(formData: FormData) {
         etsyListingId: listing.etsy_listing_id,
         etsyImageId: listing.etsy_image_id,
         imageUrl: listing.image_url,
-        imageUrls: listing.image_url ? [listing.image_url] : [],
+        imageUrls: Array.isArray(listing.image_urls)
+          ? listing.image_urls.filter((url): url is string => typeof url === "string")
+          : listing.image_url
+            ? [listing.image_url]
+            : [],
         title: listing.title,
         description: listing.description,
         destinationUrl: listing.url,

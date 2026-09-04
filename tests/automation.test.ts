@@ -4,9 +4,11 @@ import { join } from "node:path";
 import test from "node:test";
 import { getAllActiveListings } from "../lib/etsy/client";
 import { extractEtsyShopId } from "../lib/etsy/auth";
+import { normalizeEtsyListing } from "../lib/etsy/listings";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
 import { buildInstagramCaption, buildInstagramHashtags } from "../lib/instagram/caption";
+import { generateInstagramCaptionWithAI } from "../lib/instagram/aiCaption";
 import { createInstagramPost } from "../lib/instagram/posts";
 import { InstagramApiError } from "../lib/instagram/types";
 import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
@@ -155,6 +157,7 @@ function makeInstagramQueueItem(
     caption: input.caption ?? `Listing ${input.etsy_listing_id}\n\nShop on Etsy: https://etsy.test/listing/${input.etsy_listing_id}`,
     post_mode: input.post_mode ?? "single",
     media_urls: input.media_urls ?? [`https://img.test/${input.etsy_listing_id}.jpg`],
+    available_media_urls: input.available_media_urls ?? input.media_urls ?? [`https://img.test/${input.etsy_listing_id}.jpg`],
     status: input.status ?? "pending",
     attempt_count: input.attempt_count ?? 0,
     last_error: input.last_error ?? null,
@@ -329,14 +332,43 @@ class MemoryInstagramPostsRepository implements InstagramPublisherPostsRepositor
   }
 }
 
+test("Etsy sync runs as a durable background job", () => {
+  const adminActions = readFileSync(join(projectRoot, "app/actions/admin.ts"), "utf8");
+  const dashboardPage = readFileSync(join(projectRoot, "app/dashboard/page.tsx"), "utf8");
+  const progressComponent = readFileSync(join(projectRoot, "app/components/SyncJobProgress.tsx"), "utf8");
+  const migration = readFileSync(join(projectRoot, "supabase/migrations/0006_sync_jobs.sql"), "utf8");
+  const limitMigration = readFileSync(join(projectRoot, "supabase/migrations/0007_add_sync_job_limit.sql"), "utf8");
+
+  assert.match(adminActions, /after\(\(\) => runEtsySyncJob/);
+  assert.match(dashboardPage, /<SyncJobProgress initialJob=\{latestSyncJob\}/);
+  assert.match(progressComponent, /\/api\/jobs\/etsy-sync\/latest/);
+  assert.match(progressComponent, /\/api\/jobs\/etsy-sync\/run/);
+  assert.match(migration, /create table public\.sync_jobs/);
+  assert.match(migration, /sync_limit integer/);
+  assert.match(limitMigration, /add column if not exists sync_limit integer/);
+  assert.match(dashboardPage, /name="limit" value="100"/);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0008_add_instagram_available_media_urls.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0009_add_etsy_listing_image_urls.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0010_add_ai_caption_settings.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0011_add_instagram_ai_caption_job_type.sql")), true);
+});
+
 test("queue action UI uses icons and enabled platform settings", () => {
   const listingsPage = readFileSync(join(projectRoot, "app/etsy/listings/page.tsx"), "utf8");
   const pinterestQueuePage = readFileSync(join(projectRoot, "app/pinterest/queue/page.tsx"), "utf8");
 
   assert.match(listingsPage, /settings\.pinterestEnabled/);
   assert.match(listingsPage, /settings\.instagramEnabled/);
+  const instagramQueuePage = readFileSync(join(projectRoot, "app/instagram/queue/page.tsx"), "utf8");
+
   assert.match(pinterestQueuePage, /function CancelIcon/);
+  assert.match(instagramQueuePage, /function CancelIcon/);
   assert.doesNotMatch(pinterestQueuePage, />C<\/span>/);
+  assert.doesNotMatch(instagramQueuePage, />C<\/span>/);
+  assert.match(instagramQueuePage, /generateInstagramCaptionsAction/);
+  assert.match(instagramQueuePage, /instagram-ai-captions\/latest/);
+  assert.equal(existsSync(join(projectRoot, "app/api/jobs/instagram-ai-captions/latest/route.ts")), true);
+  assert.equal(existsSync(join(projectRoot, "app/api/jobs/instagram-ai-captions/run/route.ts")), true);
 });
 
 test("canonical route architecture has no legacy app routes", () => {
@@ -347,6 +379,8 @@ test("canonical route architecture has no legacy app routes", () => {
     "app/api/etsy/sync/route.ts",
     "app/api/pinterest/publish/route.ts",
     "app/api/instagram/publish/route.ts",
+    "app/api/jobs/etsy-sync/latest/route.ts",
+    "app/api/jobs/etsy-sync/run/route.ts",
     "app/etsy/listings/page.tsx",
     "app/pinterest/queue/page.tsx",
     "app/pinterest/posts/page.tsx",
@@ -468,6 +502,68 @@ test("Instagram captions use product-specific hashtags", () => {
   assert.equal(caption.includes("#etsyfinds #giftideas #handmade"), false);
   assert.equal(caption.includes("#christmasdecor"), true);
   assert.equal(caption.length <= 2200, true);
+});
+
+test("AI Instagram captions use structured product-specific hashtags", async () => {
+  const listing: NormalizedEtsyListing = {
+    etsyListingId: 101,
+    etsyImageId: 1101,
+    imageUrl: "https://img.test/101.jpg",
+    imageUrls: ["https://img.test/101.jpg"],
+    title: "St. Patrick's Day Classroom Bulletin Board Decor",
+    description: "Green shamrock printable signs for March classroom displays and teacher bulletin boards.",
+    destinationUrl: "https://etsy.test/listing/101",
+    state: "active",
+    originalCreationTimestamp: 1_700_000_000
+  };
+  const fetchImpl: typeof fetch = async (url, init) => {
+    assert.equal(url, "https://api.openai.com/v1/responses");
+    assert.equal(init?.headers instanceof Headers, false);
+    const body = JSON.parse(String(init?.body));
+
+    assert.equal(body.model, "gpt-test");
+    assert.match(body.input[1].content, /St\. Patrick's Day Classroom/);
+
+    return new Response(JSON.stringify({
+      output_text: JSON.stringify({
+        caption: "Bring a festive March touch to your classroom display with printable shamrock decor.",
+        hashtags: [
+          "st patricks day decor",
+          "classroom decor",
+          "bulletin board ideas",
+          "teacher printable",
+          "march classroom",
+          "shamrock decor",
+          "green classroom",
+          "holiday bulletin board"
+        ]
+      })
+    }), { status: 200 });
+  };
+
+  const caption = await generateInstagramCaptionWithAI({
+    listing,
+    apiKey: "test-key",
+    model: "gpt-test",
+    fetchImpl
+  });
+
+  assert.match(caption, /#stpatricksdaydecor/);
+  assert.match(caption, /#classroomdecor/);
+  assert.match(caption, /#bulletinboardideas/);
+  assert.doesNotMatch(caption, /#etsyfinds/);
+  assert.equal(caption.length <= 2200, true);
+});
+
+test("Etsy listings decode HTML entities from the API", () => {
+  const listing = normalizeEtsyListing({
+    ...etsyListing(101),
+    title: "St. Patrick&#39;s Day Decor &amp; Printable",
+    description: "Irish party &#x27;green&#x27; wall art"
+  });
+
+  assert.equal(listing.title, "St. Patrick's Day Decor & Printable");
+  assert.equal(listing.description, "Irish party 'green' wall art");
 });
 
 test("Etsy listings normalize lowercase images from the API", async () => {
@@ -931,6 +1027,39 @@ test("Etsy pagination fetches 1300+ listings", async () => {
   try {
     const listings = await getAllActiveListings();
     assert.equal(listings.length, total);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Etsy listing fetch can be limited for test sync", async () => {
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.test";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";
+  process.env.ETSY_API_KEY = "etsy-key";
+  process.env.ETSY_ACCESS_TOKEN = "etsy-token";
+  process.env.ETSY_SHOP_ID = "123";
+
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+
+  globalThis.fetch = async (request) => {
+    calls += 1;
+    const url = new URL(String(request));
+    const offset = Number(url.searchParams.get("offset"));
+    const limit = Number(url.searchParams.get("limit"));
+    const total = 1305;
+    const results = Array.from(
+      { length: Math.max(Math.min(limit, total - offset), 0) },
+      (_, index) => etsyListing(offset + index + 1)
+    );
+
+    return Response.json({ count: total, results });
+  };
+
+  try {
+    const listings = await getAllActiveListings(undefined, 100);
+    assert.equal(listings.length, 100);
+    assert.equal(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

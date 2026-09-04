@@ -233,9 +233,10 @@ async function discoverAndSaveShopId(userId: string, accessToken: string) {
   await saveEtsyShopIdForUser(userId, extractEtsyShopId(shop));
 }
 
-export async function getEtsyAccessToken() {
-  const session = await getCurrentSession();
-  const settings = await getSettingsForUser(session?.userId);
+export async function getEtsyAccessToken(userId?: string) {
+  const session = userId ? null : await getCurrentSession();
+  const resolvedUserId = userId ?? session?.userId;
+  const settings = await getSettingsForUser(resolvedUserId);
 
   if (!settings.etsyAccessToken) {
     throw new Error("Missing Etsy OAuth token. Connect Etsy from Settings.");
@@ -245,7 +246,7 @@ export async function getEtsyAccessToken() {
     return settings.etsyAccessToken;
   }
 
-  const apiKey = requireSetting(settings.etsyApiKey, "Etsy API keystring");
+  const apiKey = requireSetting(settings.etsyApiKey, "Etsy API keystring and shared secret");
   const token = await exchangeToken(
     new URLSearchParams({
       grant_type: "refresh_token",
@@ -254,20 +255,20 @@ export async function getEtsyAccessToken() {
     })
   );
 
-  if (session?.userId) {
-    await saveToken(session.userId, token);
+  if (resolvedUserId) {
+    await saveToken(resolvedUserId, token);
   }
 
   return token.access_token;
 }
 
-export async function getEtsyShopId() {
-  const session = await getCurrentSession();
-  const settings = await getSettingsForUser(session?.userId);
+export async function getEtsyShopId(userId?: string) {
+  const session = userId ? null : await getCurrentSession();
+  const settings = await getSettingsForUser(userId ?? session?.userId);
 
   return requireSetting(settings.etsyShopId, "Etsy shop ID");
 }
 
-export async function getEtsyApiKey() {
-  return getEtsyApiKeyForUser();
+export async function getEtsyApiKey(userId?: string) {
+  return getEtsyApiKeyForUser(userId);
 }

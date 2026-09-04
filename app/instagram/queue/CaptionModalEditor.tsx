@@ -4,8 +4,10 @@ import { useState, useTransition } from "react";
 import { updateInstagramQueueItemAction } from "@/app/actions/admin";
 import type { InstagramPostMode } from "@/lib/instagram/types";
 
-function getMediaCount(value: unknown) {
-  return Array.isArray(value) ? value.length : 0;
+function getStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((url): url is string => typeof url === "string")
+    : [];
 }
 
 function EditIcon() {
@@ -21,18 +23,34 @@ export function CaptionModalEditor({
   id,
   caption,
   postMode,
-  mediaUrls
+  mediaUrls,
+  availableMediaUrls
 }: {
   id: string;
   caption: string;
   postMode: InstagramPostMode;
   mediaUrls: unknown;
+  availableMediaUrls: unknown;
 }) {
   const [open, setOpen] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<InstagramPostMode>(postMode);
   const [isPending, startTransition] = useTransition();
+  const availableUrls = getStringArray(availableMediaUrls);
+  const currentUrls = getStringArray(mediaUrls);
+  const selectableUrls = availableUrls.length > 0
+    ? availableUrls.slice(0, 10)
+    : currentUrls.slice(0, 10);
+  const [selectedUrls, setSelectedUrls] = useState<string[]>(() => {
+    const initialUrls = currentUrls.length > 0
+      ? currentUrls.filter((url) => selectableUrls.includes(url)).slice(0, 10)
+      : selectableUrls.slice(0, postMode === "carousel" ? 5 : 1);
+
+    return initialUrls.length > 0 ? initialUrls : selectableUrls.slice(0, 1);
+  });
 
   function save(formData: FormData) {
     startTransition(async () => {
+      selectedUrls.forEach((url) => formData.append("selectedMediaUrls", url));
       await updateInstagramQueueItemAction(formData);
       setOpen(false);
     });
@@ -41,7 +59,7 @@ export function CaptionModalEditor({
   return (
     <>
       <button
-        className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center p-2"
+        className="btn btn-primary btn-sm d-inline-flex align-items-center justify-content-center p-2"
         type="button"
         onClick={() => setOpen(true)}
         title="Edit caption"
@@ -52,12 +70,12 @@ export function CaptionModalEditor({
       {open ? (
         <>
           <div className="modal fade show d-block" tabIndex={-1} role="dialog" aria-modal="true">
-            <div className="modal-dialog modal-dialog-centered modal-lg">
+            <div className="modal-dialog modal-dialog-centered modal-xl">
               <div className="modal-content">
                 <div className="modal-header">
                   <div>
                     <h2 className="modal-title fs-5">Edit Instagram Caption</h2>
-                    <p className="text-muted mb-0 small">Review the caption and media mode before publishing.</p>
+                    <p className="text-muted mb-0 small">Review the caption, media mode, and selected images before publishing.</p>
                   </div>
                   <button
                     type="button"
@@ -74,15 +92,83 @@ export function CaptionModalEditor({
                       name="caption"
                       defaultValue={caption}
                       maxLength={2200}
-                      rows={12}
+                      rows={8}
                       autoFocus
                     />
-                    <select className="form-select mt-3" name="postMode" defaultValue={postMode}>
-                      <option value="single">Single</option>
-                      <option value="carousel" disabled={getMediaCount(mediaUrls) < 2}>
-                        Carousel
-                      </option>
-                    </select>
+                    <div className="mt-3">
+                      <label className="form-label" htmlFor={`post-mode-${id}`}>Post type</label>
+                      <select
+                        id={`post-mode-${id}`}
+                        className="form-select"
+                        name="postMode"
+                        value={selectedMode}
+                        onChange={(event) => {
+                          const nextMode = event.target.value === "carousel" ? "carousel" : "single";
+                          setSelectedMode(nextMode);
+                          setSelectedUrls((urls) => {
+                            if (nextMode === "single") {
+                              return urls.length > 0 ? urls.slice(0, 1) : selectableUrls.slice(0, 1);
+                            }
+
+                            return urls.length > 0 ? urls.slice(0, 10) : selectableUrls.slice(0, 5);
+                          });
+                        }}
+                      >
+                        <option value="single">Single</option>
+                        <option value="carousel" disabled={selectableUrls.length < 2}>
+                          Carousel
+                        </option>
+                      </select>
+                    </div>
+                    {selectableUrls.length > 0 ? (
+                      <div className="mt-4">
+                        <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
+                          <label className="form-label mb-0">Images</label>
+                          <span className="text-muted small">
+                            {selectedUrls.length} selected{selectedMode === "carousel" ? " / 10 max" : ""}
+                          </span>
+                        </div>
+                        <div className="d-flex flex-wrap gap-2">
+                          {selectableUrls.map((url, index) => {
+                            const checked = selectedUrls.includes(url);
+
+                            return (
+                              <label
+                                key={url}
+                                className={`position-relative border rounded overflow-hidden ${checked ? "border-primary border-2" : "border-secondary-subtle"}`}
+                                style={{ width: 86, height: 86, cursor: "pointer" }}
+                                title={`Image ${index + 1}`}
+                              >
+                                <input
+                                  className="form-check-input image-picker-control position-absolute top-0 start-0 m-1"
+                                  type={selectedMode === "carousel" ? "checkbox" : "radio"}
+                                  name="selectedMediaPicker"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setSelectedUrls((urls) => {
+                                      if (selectedMode === "single") {
+                                        return [url];
+                                      }
+
+                                      if (urls.includes(url)) {
+                                        return urls.length > 1 ? urls.filter((item) => item !== url) : urls;
+                                      }
+
+                                      return urls.length >= 10 ? urls : [...urls, url];
+                                    });
+                                  }}
+                                />
+                                <img
+                                  src={url}
+                                  alt=""
+                                  className="w-100 h-100 object-fit-cover"
+                                />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="modal-footer">
                     <button type="button" className="btn btn-outline-secondary" onClick={() => setOpen(false)}>

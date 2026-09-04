@@ -13,6 +13,26 @@ export type PinQueueStatus =
   | "failed"
   | "cancelled";
 
+export type SyncJobStatus = "queued" | "running" | "succeeded" | "failed";
+export type SyncJobType = "etsy_sync" | "instagram_ai_captions";
+
+
+export type SyncJobRow = {
+  id: string;
+  user_id: string | null;
+  type: SyncJobType;
+  status: SyncJobStatus;
+  progress_current: number;
+  progress_total: number;
+  sync_limit: number | null;
+  message: string;
+  result: Json;
+  error: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 
 export type AdminUserRow = {
   id: string;
@@ -42,6 +62,9 @@ export type UserSettingsRow = {
   instagram_user_id: string | null;
   instagram_post_mode: "single" | "carousel";
   meta_api_version: string | null;
+  ai_captions_enabled: boolean;
+  openai_api_key: string | null;
+  openai_model: string | null;
   dry_run: boolean;
   max_pins_per_run: number;
   max_pin_retries: number;
@@ -56,6 +79,7 @@ export type EtsyListingRow = {
   etsy_listing_id: number;
   etsy_image_id: number | null;
   image_url: string | null;
+  image_urls: Json;
   title: string;
   description: string | null;
   url: string | null;
@@ -106,6 +130,7 @@ export type InstagramQueueRow = {
   caption: string;
   post_mode: "single" | "carousel";
   media_urls: Json;
+  available_media_urls: Json;
   status: PinQueueStatus;
   attempt_count: number;
   last_error: string | null;
@@ -132,6 +157,32 @@ export type InstagramPostRow = {
 export type Database = {
   public: {
     Tables: {
+      sync_jobs: {
+        Row: SyncJobRow;
+        Insert: Omit<SyncJobRow, "id" | "status" | "progress_current" | "progress_total" | "sync_limit" | "message" | "result" | "error" | "started_at" | "completed_at" | "created_at" | "updated_at"> & {
+          id?: string;
+          status?: SyncJobStatus;
+          progress_current?: number;
+          progress_total?: number;
+          sync_limit?: number | null;
+          message?: string;
+          result?: Json;
+          error?: string | null;
+          started_at?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<SyncJobRow, "id" | "created_at">>;
+        Relationships: [
+          {
+            foreignKeyName: "sync_jobs_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "admin_users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       admin_users: {
         Row: AdminUserRow;
         Insert: Omit<AdminUserRow, "id" | "created_at" | "updated_at"> & {
@@ -209,13 +260,14 @@ export type Database = {
       };
       instagram_queue: {
         Row: InstagramQueueRow;
-        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "post_mode" | "media_urls" | "processing_started_at" | "created_at" | "updated_at" | "processed_at"> & {
+        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "post_mode" | "media_urls" | "available_media_urls" | "processing_started_at" | "created_at" | "updated_at" | "processed_at"> & {
           id?: string;
           status?: PinQueueStatus;
           attempt_count?: number;
           last_error?: string | null;
           post_mode?: "single" | "carousel";
           media_urls?: Json;
+          available_media_urls?: Json;
           processing_started_at?: string | null;
           created_at?: string;
           updated_at?: string;

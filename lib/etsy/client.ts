@@ -5,10 +5,10 @@ import type { EtsyListing, EtsyListingsResponse } from "./types";
 const ETSY_API_URL = "https://api.etsy.com/v3/application";
 const ETSY_PAGE_LIMIT = 100;
 
-export async function getAllActiveListings(): Promise<EtsyListing[]> {
-  const accessToken = await getEtsyAccessToken();
-  const apiKey = await getEtsyApiKey();
-  const shopId = await getEtsyShopId();
+export async function getAllActiveListings(userId?: string, maxListings?: number): Promise<EtsyListing[]> {
+  const accessToken = await getEtsyAccessToken(userId);
+  const apiKey = await getEtsyApiKey(userId);
+  const shopId = await getEtsyShopId(userId);
   const listings: EtsyListing[] = [];
   let offset = 0;
   let totalCount: number | null = null;
@@ -47,6 +47,11 @@ export async function getAllActiveListings(): Promise<EtsyListing[]> {
       received: data.results.length,
       totalCount
     });
+
+    if (maxListings && listings.length >= maxListings) {
+      listings.length = maxListings;
+      break;
+    }
 
     offset += ETSY_PAGE_LIMIT;
   } while (totalCount === null || listings.length < totalCount);

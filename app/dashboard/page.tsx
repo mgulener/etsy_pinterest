@@ -3,6 +3,7 @@ import {
   syncNowAction
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
+import { SyncJobProgress } from "@/app/components/SyncJobProgress";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
@@ -10,8 +11,10 @@ import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueu
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
+import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -29,8 +32,8 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
     return `Bootstrap finished. Fetched ${getParam(params, "fetched") ?? 0}, saved ${getParam(params, "saved") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
   }
 
-  if (action === "sync") {
-    return `Etsy sync finished. Fetched ${getParam(params, "fetched") ?? 0}, known ${getParam(params, "known") ?? 0}, Pinterest queued ${getParam(params, "queued") ?? 0}, Instagram queued ${getParam(params, "instagramQueued") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
+  if (action === "sync-started") {
+    return "Etsy sync started. You can leave or refresh this page; progress will keep updating here.";
   }
 
   if (action === "sync-error") {
@@ -54,7 +57,7 @@ function MetricRow({ label, value, tone }: { label: string; value: number; tone?
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   const params = (await searchParams) ?? {};
   const actionMessage = buildActionMessage(params);
 
@@ -64,6 +67,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const listingsRepository = createListingsRepository();
   const queueRepository = createPinQueueRepository();
   const postsRepository = createPinterestPostsRepository();
+  const syncJobsRepository = createSyncJobsRepository();
 
   const [
     initialSyncCompleted,
@@ -73,7 +77,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     failedCount,
     instagramPendingCount,
     instagramPublishedCount,
-    instagramFailedCount
+    instagramFailedCount,
+    latestSyncJob
   ] = await Promise.all([
     settingsRepository.isInitialSyncCompleted(),
     listingsRepository.count(),
@@ -82,7 +87,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     queueRepository.countByStatus("failed"),
     instagramQueueRepository.countByStatus("pending"),
     instagramPostsRepository.count(),
-    instagramQueueRepository.countByStatus("failed")
+    instagramQueueRepository.countByStatus("failed"),
+    syncJobsRepository.getLatestForUser(session.userId, "etsy_sync")
   ]);
 
   return (
@@ -100,6 +106,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <form action={syncNowAction}>
             <SubmitButton pendingText="Syncing Etsy...">Sync Etsy Now</SubmitButton>
           </form>
+          <form action={syncNowAction}>
+            <input type="hidden" name="limit" value="100" />
+            <SubmitButton className="ghost-button" pendingText="Starting test sync...">
+              Test Sync 100
+            </SubmitButton>
+          </form>
         </div>
       </div>
 
@@ -111,6 +123,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           {actionMessage}
         </section>
       ) : null}
+
+      <SyncJobProgress initialJob={latestSyncJob} />
 
       {!initialSyncCompleted ? (
         <section className="notice">

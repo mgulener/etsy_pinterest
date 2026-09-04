@@ -130,6 +130,27 @@ export default async function SettingsPage({ searchParams }: PageProps) {
 
         <section className="settings-section">
           <div>
+            <h2>AI Captions</h2>
+            <p>Generate product-specific Instagram captions and hashtags before publishing.</p>
+          </div>
+          <div className="settings-grid">
+            <label className="checkbox-field">
+              <input name="aiCaptionsEnabled" type="checkbox" defaultChecked={settings.aiCaptionsEnabled} />
+              Enable AI caption suggestions
+            </label>
+            <label>
+              OpenAI API key
+              <input name="openaiApiKey" defaultValue={value(settings.openaiApiKey)} placeholder="sk-..." />
+            </label>
+            <label>
+              OpenAI model
+              <input name="openaiModel" defaultValue={value(settings.openaiModel)} placeholder="gpt-5.4-mini" />
+            </label>
+          </div>
+        </section>
+
+        <section className="settings-section">
+          <div>
             <h2>Run Controls</h2>
             <p>Queue limits, retry counts, and dry-run behavior for this user.</p>
           </div>

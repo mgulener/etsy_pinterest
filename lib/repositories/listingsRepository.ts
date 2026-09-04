@@ -30,6 +30,7 @@ function toListingRow(listing: NormalizedEtsyListing) {
     etsy_listing_id: listing.etsyListingId,
     etsy_image_id: listing.etsyImageId,
     image_url: listing.imageUrl,
+    image_urls: listing.imageUrls,
     title: listing.title,
     description: listing.description,
     url: listing.destinationUrl,
@@ -128,6 +129,7 @@ export function createListingsRepository(): ListingsRepository {
         .update({
           etsy_image_id: listing.etsyImageId,
           image_url: listing.imageUrl,
+          image_urls: listing.imageUrls,
           title: listing.title,
           description: listing.description,
           url: listing.destinationUrl,

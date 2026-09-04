@@ -1,16 +1,20 @@
 import { ConfirmDeleteButton } from "@/app/components/ConfirmDeleteButton";
 import { Pagination } from "@/app/components/Pagination";
+import { SyncJobProgress } from "@/app/components/SyncJobProgress";
 import { CaptionModalEditor } from "./CaptionModalEditor";
 import {
   cancelInstagramQueueItemAction,
   deleteInstagramQueueItemAction,
+  generateInstagramCaptionsAction,
   publishInstagramNowAction,
+  regenerateInstagramCaptionAction,
   retryAllFailedInstagramAction,
   retryInstagramQueueItemAction
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
+import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import type { PinQueueStatus } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
@@ -33,15 +37,61 @@ function formatDate(value: string | null) {
 }
 
 function buildActionMessage(params: Record<string, string | string[] | undefined>) {
-  if (getParam(params, "action") !== "publish-instagram") {
-    return null;
+  const action = getParam(params, "action");
+
+  if (action === "publish-instagram") {
+    return {
+      tone: "success" as const,
+      text: `Instagram publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`
+    };
   }
 
-  return `Instagram publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
+  if (action === "ai-caption") {
+    const isError = getParam(params, "status") === "error";
+    return {
+      tone: isError ? "danger" as const : "success" as const,
+      text: isError
+        ? `AI caption failed: ${getParam(params, "message") ?? "Unknown error"}`
+        : "AI caption generated. Review it before publishing."
+    };
+  }
+
+  if (action === "ai-caption-job-started") {
+    return {
+      tone: "info" as const,
+      text: "AI caption generation started. You can leave or refresh this page; progress will keep updating here."
+    };
+  }
+
+  return null;
 }
 
 function getMediaCount(value: unknown) {
   return Array.isArray(value) ? value.length : 0;
+}
+
+function CancelIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function AiIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v4" />
+      <path d="M12 17v4" />
+      <path d="M3 12h4" />
+      <path d="M17 12h4" />
+      <path d="m5.6 5.6 2.8 2.8" />
+      <path d="m15.6 15.6 2.8 2.8" />
+      <path d="m18.4 5.6-2.8 2.8" />
+      <path d="m8.4 15.6-2.8 2.8" />
+    </svg>
+  );
 }
 
 function buildPageHref(input: { page: number; status?: PinQueueStatus; search: string }) {
@@ -60,7 +110,7 @@ function buildPageHref(input: { page: number; status?: PinQueueStatus; search: s
 }
 
 export default async function InstagramQueuePage({ searchParams }: PageProps) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   const params = (await searchParams) ?? {};
   const rawStatus = getParam(params, "status");
   const status = statuses.includes(rawStatus as PinQueueStatus)
@@ -69,12 +119,17 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
   const search = getParam(params, "search") ?? "";
   const page = Math.max(Number(getParam(params, "page") ?? "1"), 1);
   const pageSize = 25;
-  const result = await createInstagramQueueRepository().list({
-    page,
-    pageSize,
-    status,
-    search: search.trim() || undefined
-  });
+  const instagramQueueRepository = createInstagramQueueRepository();
+  const syncJobsRepository = createSyncJobsRepository();
+  const [result, latestAiCaptionJob] = await Promise.all([
+    instagramQueueRepository.list({
+      page,
+      pageSize,
+      status,
+      search: search.trim() || undefined
+    }),
+    syncJobsRepository.getLatestForUser(session.userId, "instagram_ai_captions")
+  ]);
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const actionMessage = buildActionMessage(params);
 
@@ -86,6 +141,17 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
           <p>{result.total} queue items.</p>
         </div>
         <div className="actions">
+          <form action={generateInstagramCaptionsAction}>
+            <SubmitButton className="btn ai-button" pendingText="Starting AI captions...">
+              Generate AI Captions
+            </SubmitButton>
+          </form>
+          <form action={generateInstagramCaptionsAction}>
+            <input type="hidden" name="limit" value="25" />
+            <SubmitButton className="btn ai-button ai-button-subtle" pendingText="Starting test...">
+              Test AI 25
+            </SubmitButton>
+          </form>
           <form action={publishInstagramNowAction}>
             <SubmitButton pendingText="Publishing Instagram...">
               Publish Instagram Now
@@ -97,7 +163,15 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {actionMessage ? <section className="status-banner">{actionMessage}</section> : null}
+      {actionMessage ? <section className={`alert alert-${actionMessage.tone}`} role="alert">{actionMessage.text}</section> : null}
+
+      <SyncJobProgress
+        initialJob={latestAiCaptionJob}
+        title="Instagram AI Captions"
+        latestPath="/api/jobs/instagram-ai-captions/latest"
+        runPath="/api/jobs/instagram-ai-captions/run"
+        storageKey="dismissedInstagramAiCaptionJobId"
+      />
 
       <div className="toolbar">
         <form>
@@ -169,7 +243,17 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                         caption={item.caption}
                         postMode={item.post_mode}
                         mediaUrls={item.media_urls}
+                        availableMediaUrls={item.available_media_urls}
                       />
+                    ) : null}
+                    {item.status === "pending" || item.status === "failed" || item.status === "cancelled" ? (
+                      <form action={regenerateInstagramCaptionAction} title="Generate AI caption">
+                        <input type="hidden" name="id" value={item.id} />
+                        <SubmitButton className="btn ai-button btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
+                          <AiIcon />
+                          <span className="sr-only">Generate AI caption</span>
+                        </SubmitButton>
+                      </form>
                     ) : null}
                     {item.status === "failed" ? (
                       <form action={retryInstagramQueueItemAction} title="Retry">
@@ -183,8 +267,8 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                     {item.status === "pending" || item.status === "failed" ? (
                       <form action={cancelInstagramQueueItemAction} title="Cancel">
                         <input type="hidden" name="id" value={item.id} />
-                        <SubmitButton className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
-                          <span aria-hidden="true">C</span>
+                        <SubmitButton className="btn btn-warning btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
+                          <CancelIcon />
                           <span className="sr-only">Cancel</span>
                         </SubmitButton>
                       </form>
