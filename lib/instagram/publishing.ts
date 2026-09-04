@@ -65,6 +65,20 @@ function classifyInstagramError(
   const lowerBody = body.toLowerCase();
 
   if (
+    status === 429 ||
+    lowerBody.includes("rate limit") ||
+    lowerBody.includes("application request limit") ||
+    lowerBody.includes("action is blocked") ||
+    lowerBody.includes("\"code\":4")
+  ) {
+    return new InstagramApiError(
+      `Instagram rate limit hit while calling ${operation}: ${status} ${body}`,
+      "rate_limit",
+      true
+    );
+  }
+
+  if (
     status === 401 ||
     status === 403 ||
     lowerBody.includes("oauthexception") ||
@@ -74,14 +88,6 @@ function classifyInstagramError(
       `Instagram authentication failed while calling ${operation}: ${status} ${body}`,
       "auth_error",
       false
-    );
-  }
-
-  if (status === 429 || lowerBody.includes("rate limit")) {
-    return new InstagramApiError(
-      `Instagram rate limit hit while calling ${operation}: ${status} ${body}`,
-      "rate_limit",
-      true
     );
   }
 
