@@ -15,6 +15,7 @@ import {
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
+import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import type { PinQueueStatus } from "@/lib/supabase/types";
@@ -129,7 +130,8 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
   const pageSize = 25;
   const instagramQueueRepository = createInstagramQueueRepository();
   const syncJobsRepository = createSyncJobsRepository();
-  const [result, latestAiCaptionJob, latestInstagramPublishJob] = await Promise.all([
+  const appSettingsRepository = createAppSettingsRepository();
+  const [result, latestAiCaptionJob, latestInstagramPublishJob, dismissedProgressJobIds] = await Promise.all([
     instagramQueueRepository.list({
       page,
       pageSize,
@@ -137,7 +139,8 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
       search: search.trim() || undefined
     }),
     syncJobsRepository.getLatestForUser(session.userId, "instagram_ai_captions"),
-    syncJobsRepository.getLatestForUser(session.userId, "instagram_publish")
+    syncJobsRepository.getLatestForUser(session.userId, "instagram_publish"),
+    appSettingsRepository.getDismissedProgressJobIds(session.userId)
   ]);
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const actionMessage = buildActionMessage(params);
@@ -185,6 +188,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
         latestPath="/api/jobs/instagram-publish/latest"
         runPath="/api/jobs/instagram-publish/run"
         storageKey="dismissedInstagramPublishJobId"
+        initialDismissedJobIds={dismissedProgressJobIds}
       />
 
       <SyncJobProgress
@@ -193,6 +197,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
         latestPath="/api/jobs/instagram-ai-captions/latest"
         runPath="/api/jobs/instagram-ai-captions/run"
         storageKey="dismissedInstagramAiCaptionJobId"
+        initialDismissedJobIds={dismissedProgressJobIds}
       />
 
       <div className="toolbar">

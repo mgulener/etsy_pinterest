@@ -78,7 +78,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     instagramPendingCount,
     instagramPublishedCount,
     instagramFailedCount,
-    latestSyncJob
+    latestSyncJob,
+    dismissedProgressJobIds
   ] = await Promise.all([
     settingsRepository.isInitialSyncCompleted(),
     listingsRepository.count(),
@@ -88,7 +89,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     instagramQueueRepository.countByStatus("pending"),
     instagramPostsRepository.count(),
     instagramQueueRepository.countByStatus("failed"),
-    syncJobsRepository.getLatestForUser(session.userId, "etsy_sync")
+    syncJobsRepository.getLatestForUser(session.userId, "etsy_sync"),
+    settingsRepository.getDismissedProgressJobIds(session.userId)
   ]);
 
   return (
@@ -124,7 +126,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </section>
       ) : null}
 
-      <SyncJobProgress initialJob={latestSyncJob} />
+      <SyncJobProgress initialJob={latestSyncJob} initialDismissedJobIds={dismissedProgressJobIds} />
 
       {!initialSyncCompleted ? (
         <section className="notice">

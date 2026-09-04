@@ -5,6 +5,7 @@ import type { SyncJobRow } from "@/lib/supabase/types";
 
 type SyncJobProgressProps = {
   initialJob: SyncJobRow | null;
+  initialDismissedJobIds?: string[];
   title?: string;
   latestPath?: string;
   runPath?: string;
@@ -60,6 +61,7 @@ function resultSummary(job: SyncJobRow) {
 
 export function SyncJobProgress({
   initialJob,
+  initialDismissedJobIds = [],
   title = "Etsy Sync",
   latestPath = "/api/jobs/etsy-sync/latest",
   runPath = "/api/jobs/etsy-sync/run",
@@ -70,6 +72,10 @@ export function SyncJobProgress({
     typeof window === "undefined"
       ? null
       : window.localStorage.getItem(storageKey)
+  );
+  const dismissedJobIds = useMemo(
+    () => new Set([...initialDismissedJobIds, ...(dismissedJobId ? [dismissedJobId] : [])]),
+    [dismissedJobId, initialDismissedJobIds]
   );
   const percent = useMemo(() => {
     if (!job) {
@@ -150,7 +156,7 @@ export function SyncJobProgress({
     };
   }, [activeJobSignature, activeJobStatus, isActive, latestPath, runPath]);
 
-  if (!job || (!isActive && dismissedJobId === job.id)) {
+  if (!job || (!isActive && dismissedJobIds.has(job.id))) {
     return null;
   }
 
@@ -161,6 +167,11 @@ export function SyncJobProgress({
 
     window.localStorage.setItem(storageKey, job.id);
     setDismissedJobId(job.id);
+    void fetch("/api/jobs/dismiss", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: job.id })
+    });
   };
 
   const tone = job.status === "failed" ? "danger" : job.status === "succeeded" ? "success" : "info";
