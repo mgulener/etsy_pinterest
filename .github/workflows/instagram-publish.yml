@@ -1,0 +1,25 @@
+name: Instagram Scheduled Publish
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: instagram-scheduled-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Instagram publish cron
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$CRON_SECRET"
+          curl --fail --show-error --silent --max-time 300 \
+            --request GET \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "https://etsy-pinterest.vercel.app/api/cron/instagram/publish"

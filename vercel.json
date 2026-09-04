@@ -10,10 +10,6 @@
     {
       "path": "/api/cron/pinterest/publish",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/instagram/publish",
-      "schedule": "0 5 * * *"
     }
   ]
 }
