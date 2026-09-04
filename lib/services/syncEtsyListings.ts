@@ -90,7 +90,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   const scheduleStart = new Date();
 
   for (const [index, listing] of newListings.entries()) {
-    const scheduledAt = buildScheduledAt(index, 15, scheduleStart);
+    const scheduledAt = buildScheduledAt(index, undefined, scheduleStart);
     const queueProgress = newListings.length === 0
       ? 95
       : 55 + Math.round((index / newListings.length) * 40);

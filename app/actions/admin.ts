@@ -277,7 +277,7 @@ export async function updateInstagramScheduleAction(formData: FormData) {
 
 export async function rebuildPinterestScheduleAction() {
   await requireAdminSession();
-  const updated = await createPinQueueRepository().rebuildPendingSchedule(15);
+  const updated = await createPinQueueRepository().rebuildPendingSchedule();
 
   revalidatePath("/pinterest/queue");
   redirect(`/pinterest/queue?action=rebuild-schedule&updated=${updated}`);
@@ -285,7 +285,7 @@ export async function rebuildPinterestScheduleAction() {
 
 export async function rebuildInstagramScheduleAction() {
   await requireAdminSession();
-  const updated = await createInstagramQueueRepository().rebuildPendingSchedule(15);
+  const updated = await createInstagramQueueRepository().rebuildPendingSchedule();
 
   revalidatePath("/instagram/queue");
   redirect(`/instagram/queue?action=rebuild-schedule&updated=${updated}`);

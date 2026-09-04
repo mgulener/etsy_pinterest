@@ -1,6 +1,6 @@
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 
-export const DEFAULT_QUEUE_INTERVAL_MINUTES = 15;
+export const DEFAULT_QUEUE_INTERVAL_MINUTES = 5;
 
 const SEASONAL_RULES: Array<{ priority: number; pattern: RegExp }> = [
   { priority: 10, pattern: /\b(september|back to school|school|teacher|classroom|fall|autumn|labor day|patriot day|grandparents)\b/i },
