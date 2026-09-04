@@ -1170,6 +1170,43 @@ test("Instagram auth error fails without retrying", async () => {
   assert.equal(queueRepository.items[0]?.attempt_count, 1);
 });
 
+test("Instagram API access blocked is retryable", async () => {
+  process.env.INSTAGRAM_ACCESS_TOKEN = "ig-token";
+  process.env.INSTAGRAM_ACCOUNT_ID = "ig-account";
+  process.env.META_API_VERSION = "v25.0";
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        error: {
+          message: "API access blocked.",
+          type: "OAuthException",
+          code: 200
+        }
+      },
+      { status: 400 }
+    );
+
+  try {
+    await assert.rejects(
+      () => createInstagramPost({
+        imageUrl: "https://img.test/101.jpg",
+        caption: "Caption",
+        mode: "single"
+      }),
+      (error) => {
+        assert.equal(error instanceof InstagramApiError, true);
+        assert.equal((error as InstagramApiError).type, "rate_limit");
+        assert.equal((error as InstagramApiError).retryable, true);
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Etsy pagination fetches 1300+ listings", async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://supabase.test";
   process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role";

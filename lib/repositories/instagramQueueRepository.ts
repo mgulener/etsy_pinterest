@@ -7,7 +7,12 @@ import {
   selectInstagramMediaUrls
 } from "@/lib/instagram/media";
 import { buildInstagramCaption } from "@/lib/instagram/caption";
-import { buildScheduledAt, DEFAULT_QUEUE_INTERVAL_MINUTES, sortQueueRowsForPublishing } from "@/lib/queue/scheduling";
+import {
+  buildScheduledAt,
+  DEFAULT_QUEUE_INTERVAL_MINUTES,
+  sortQueueRowsForPublishing,
+  type QueueSortableItem
+} from "@/lib/queue/scheduling";
 import type { InstagramPostMode } from "@/lib/instagram/types";
 import type { InstagramQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 
@@ -51,6 +56,8 @@ export type InstagramQueueRepository = {
     search?: string;
   }): Promise<InstagramQueuePageResult>;
 };
+
+const scheduleUpdateBatchSize = 25;
 
 async function resolvePostMode(listing: NormalizedEtsyListing): Promise<InstagramPostMode> {
   const configuredMode = await getInstagramPostMode();
@@ -166,26 +173,51 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
     },
 
     async rebuildPendingSchedule(intervalMinutes = DEFAULT_QUEUE_INTERVAL_MINUTES) {
-      const { data, error } = await supabase
-        .from("instagram_queue")
-        .select("id, title, description, created_at, scheduled_at")
-        .eq("status", "pending")
-        .eq("schedule_locked", false);
+      const pageSize = 1000;
+      const data: Array<QueueSortableItem & { id: string }> = [];
+      let from = 0;
+      let readMore = true;
 
-      if (error) {
-        throw new Error(`Failed to read Instagram queue for schedule rebuild: ${error.message}`);
+      while (readMore) {
+        const { data: page, error } = await supabase
+          .from("instagram_queue")
+          .select("id, title, description, created_at, scheduled_at")
+          .eq("status", "pending")
+          .eq("schedule_locked", false)
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          throw new Error(`Failed to read Instagram queue for schedule rebuild: ${error.message}`);
+        }
+
+        data.push(...(page ?? []));
+        readMore = (page?.length ?? 0) === pageSize;
+        from += pageSize;
       }
 
-      const rows = sortQueueRowsForPublishing(data ?? []);
+      const rows = sortQueueRowsForPublishing(data);
       const startDate = new Date();
 
-      const results = await Promise.all(rows.map((item, index) =>
-        supabase
-          .from("instagram_queue")
-          .update({ scheduled_at: buildScheduledAt(index, intervalMinutes, startDate), schedule_locked: false })
-          .eq("id", item.id)
-      ));
-      const updateError = results.find((result) => result.error)?.error;
+      let updateError: { message: string } | null = null;
+
+      for (let fromIndex = 0; fromIndex < rows.length; fromIndex += scheduleUpdateBatchSize) {
+        const batch = rows.slice(fromIndex, fromIndex + scheduleUpdateBatchSize);
+        const results = await Promise.all(batch.map((item, offset) =>
+          supabase
+            .from("instagram_queue")
+            .update({
+              scheduled_at: buildScheduledAt(fromIndex + offset, intervalMinutes, startDate),
+              schedule_locked: false
+            })
+            .eq("id", item.id)
+        ));
+
+        updateError = results.find((result) => result.error)?.error ?? null;
+
+        if (updateError) {
+          break;
+        }
+      }
 
       if (updateError) {
         throw new Error("Failed to rebuild Instagram queue schedule: " + updateError.message);

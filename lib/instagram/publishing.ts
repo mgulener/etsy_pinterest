@@ -68,6 +68,7 @@ function classifyInstagramError(
     status === 429 ||
     lowerBody.includes("rate limit") ||
     lowerBody.includes("application request limit") ||
+    lowerBody.includes("api access blocked") ||
     lowerBody.includes("action is blocked") ||
     lowerBody.includes("\"code\":4")
   ) {

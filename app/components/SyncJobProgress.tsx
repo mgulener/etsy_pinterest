@@ -13,6 +13,7 @@ type SyncJobProgressProps = {
 };
 
 const activeStatuses = new Set(["queued", "running"]);
+const COMPLETED_JOB_VISIBLE_MS = 60 * 60_000;
 
 function formatDate(value: string | null) {
   return value
@@ -73,6 +74,7 @@ export function SyncJobProgress({
       ? null
       : window.localStorage.getItem(storageKey)
   );
+  const [renderedAtMs] = useState(() => Date.now());
   const dismissedJobIds = useMemo(
     () => new Set([...initialDismissedJobIds, ...(dismissedJobId ? [dismissedJobId] : [])]),
     [dismissedJobId, initialDismissedJobIds]
@@ -85,6 +87,10 @@ export function SyncJobProgress({
     return Math.max(0, Math.min(100, Math.round((job.progress_current / Math.max(job.progress_total, 1)) * 100)));
   }, [job]);
   const isActive = job ? activeStatuses.has(job.status) : false;
+  const completedAtMs = job?.completed_at ? new Date(job.completed_at).getTime() : null;
+  const isStaleCompletedJob = Boolean(
+    job && !isActive && completedAtMs && renderedAtMs - completedAtMs > COMPLETED_JOB_VISIBLE_MS
+  );
   const activeJobStatus = job?.status;
   const activeJobSignature = job
     ? `${job.id}:${job.status}:${job.progress_current}:${job.progress_total}:${job.updated_at}`
@@ -156,7 +162,7 @@ export function SyncJobProgress({
     };
   }, [activeJobSignature, activeJobStatus, isActive, latestPath, runPath]);
 
-  if (!job || (!isActive && dismissedJobIds.has(job.id))) {
+  if (!job || (!isActive && (dismissedJobIds.has(job.id) || isStaleCompletedJob))) {
     return null;
   }
 
