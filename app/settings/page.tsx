@@ -23,6 +23,9 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const settings = await getSettingsForUser(session.userId);
   const params = (await searchParams) ?? {};
   const saved = getParam(params, "saved") === "1";
+  const etsyStatus = getParam(params, "etsy");
+  const etsyMessage = getParam(params, "message");
+  const etsyWarning = getParam(params, "warning");
 
   return (
     <main className="page">
@@ -36,7 +39,16 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         </a>
       </div>
 
-      {saved ? <section className="status-banner">Settings saved.</section> : null}
+      {saved ? <section className="alert alert-success" role="alert">Settings saved.</section> : null}
+      {etsyStatus === "error" ? (
+        <section className="alert alert-danger" role="alert">{etsyMessage ?? "Etsy connection failed."}</section>
+      ) : null}
+      {etsyWarning ? (
+        <section className="alert alert-warning" role="alert">{etsyWarning}</section>
+      ) : null}
+      {etsyStatus === "connected" && !etsyWarning ? (
+        <section className="alert alert-success" role="alert">Etsy connected successfully.</section>
+      ) : null}
 
       <form action={saveSettingsAction} className="settings-form">
         <section className="settings-section">
