@@ -19,6 +19,29 @@ function EditIcon() {
   );
 }
 
+function AiIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v4" />
+      <path d="M12 17v4" />
+      <path d="M3 12h4" />
+      <path d="M17 12h4" />
+      <path d="m5.6 5.6 2.8 2.8" />
+      <path d="m15.6 15.6 2.8 2.8" />
+      <path d="m18.4 5.6-2.8 2.8" />
+      <path d="m8.4 15.6-2.8 2.8" />
+    </svg>
+  );
+}
+
+function resolveInitialUrls(currentUrls: string[], selectableUrls: string[], postMode: InstagramPostMode) {
+  const initialUrls = currentUrls.length > 0
+    ? currentUrls.filter((url) => selectableUrls.includes(url)).slice(0, 10)
+    : selectableUrls.slice(0, postMode === "carousel" ? 5 : 1);
+
+  return initialUrls.length > 0 ? initialUrls : selectableUrls.slice(0, 1);
+}
+
 export function CaptionModalEditor({
   id,
   caption,
@@ -33,20 +56,49 @@ export function CaptionModalEditor({
   availableMediaUrls: unknown;
 }) {
   const [open, setOpen] = useState(false);
+  const [draftCaption, setDraftCaption] = useState(caption);
   const [selectedMode, setSelectedMode] = useState<InstagramPostMode>(postMode);
   const [isPending, startTransition] = useTransition();
+  const [isAiPending, setIsAiPending] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
   const availableUrls = getStringArray(availableMediaUrls);
   const currentUrls = getStringArray(mediaUrls);
   const selectableUrls = availableUrls.length > 0
     ? availableUrls.slice(0, 10)
     : currentUrls.slice(0, 10);
-  const [selectedUrls, setSelectedUrls] = useState<string[]>(() => {
-    const initialUrls = currentUrls.length > 0
-      ? currentUrls.filter((url) => selectableUrls.includes(url)).slice(0, 10)
-      : selectableUrls.slice(0, postMode === "carousel" ? 5 : 1);
+  const [selectedUrls, setSelectedUrls] = useState<string[]>(() => resolveInitialUrls(currentUrls, selectableUrls, postMode));
 
-    return initialUrls.length > 0 ? initialUrls : selectableUrls.slice(0, 1);
-  });
+  function openEditor() {
+    setDraftCaption(caption);
+    setSelectedMode(postMode);
+    setSelectedUrls(resolveInitialUrls(currentUrls, selectableUrls, postMode));
+    setAiError(null);
+    setOpen(true);
+  }
+
+  async function updateWithAi() {
+    setIsAiPending(true);
+    setAiError(null);
+
+    try {
+      const response = await fetch("/api/instagram/caption", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || typeof payload.caption !== "string") {
+        throw new Error(typeof payload.error === "string" ? payload.error : "AI caption could not be generated.");
+      }
+
+      setDraftCaption(payload.caption);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "AI caption could not be generated.");
+    } finally {
+      setIsAiPending(false);
+    }
+  }
 
   function save(formData: FormData) {
     startTransition(async () => {
@@ -61,7 +113,7 @@ export function CaptionModalEditor({
       <button
         className="btn btn-primary btn-sm d-inline-flex align-items-center justify-content-center p-2"
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={openEditor}
         title="Edit caption"
         aria-label="Edit caption"
       >
@@ -87,10 +139,12 @@ export function CaptionModalEditor({
                 <form action={save}>
                   <div className="modal-body">
                     <input type="hidden" name="id" value={id} />
+                    {aiError ? <div className="alert alert-danger py-2">{aiError}</div> : null}
                     <textarea
                       className="form-control"
                       name="caption"
-                      defaultValue={caption}
+                      value={draftCaption}
+                      onChange={(event) => setDraftCaption(event.target.value)}
                       maxLength={2200}
                       rows={8}
                       autoFocus
@@ -170,13 +224,25 @@ export function CaptionModalEditor({
                       </div>
                     ) : null}
                   </div>
-                  <div className="modal-footer">
-                    <button type="button" className="btn btn-outline-secondary" onClick={() => setOpen(false)}>
-                      Cancel
+                  <div className="modal-footer justify-content-between">
+                    <button
+                      type="button"
+                      className="btn ai-button d-inline-flex align-items-center gap-2"
+                      onClick={updateWithAi}
+                      disabled={isAiPending || isPending}
+                      aria-busy={isAiPending}
+                    >
+                      <AiIcon />
+                      {isAiPending ? "Updating..." : "Update With AI"}
                     </button>
-                    <button type="submit" className="btn btn-primary" disabled={isPending} aria-busy={isPending}>
-                      {isPending ? "Saving..." : "Save"}
-                    </button>
+                    <div className="d-flex align-items-center gap-2">
+                      <button type="button" className="btn btn-outline-secondary" onClick={() => setOpen(false)}>
+                        Cancel
+                      </button>
+                      <button type="submit" className="btn btn-primary" disabled={isPending || isAiPending} aria-busy={isPending}>
+                        {isPending ? "Saving..." : "Save"}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>

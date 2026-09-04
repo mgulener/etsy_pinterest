@@ -64,6 +64,8 @@ async function updateQueueCaption(item: QueueItem, caption: string) {
     .from("instagram_queue")
     .update({
       caption: caption.slice(0, 2200),
+      caption_source: "ai",
+      caption_generated_at: new Date().toISOString(),
       media_urls: getStringArray(item.media_urls),
       last_error: null
     })

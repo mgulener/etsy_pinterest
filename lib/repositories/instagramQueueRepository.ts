@@ -7,6 +7,7 @@ import {
   selectInstagramMediaUrls
 } from "@/lib/instagram/media";
 import { buildInstagramCaption } from "@/lib/instagram/caption";
+import { buildScheduledAt, DEFAULT_QUEUE_INTERVAL_MINUTES, sortQueueRowsForPublishing } from "@/lib/queue/scheduling";
 import type { InstagramPostMode } from "@/lib/instagram/types";
 import type { InstagramQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 
@@ -17,17 +18,25 @@ export type InstagramQueuePageResult = {
 
 export type InstagramQueueRepository = {
   countByStatus(status: PinQueueStatus): Promise<number>;
-  enqueueListing(listing: NormalizedEtsyListing): Promise<"created" | "duplicate">;
+  enqueueListing(listing: NormalizedEtsyListing, options?: {
+    caption?: string;
+    captionSource?: "rule" | "ai";
+    scheduledAt?: string;
+  }): Promise<"created" | "duplicate">;
   updateDetails(input: {
     id: string;
     caption: string;
     postMode: InstagramPostMode;
     selectedMediaUrls?: string[];
+    scheduledAt?: string;
+    captionSource?: "manual" | "ai";
   }): Promise<void>;
+  updateSchedule(id: string, scheduledAt: string): Promise<void>;
+  rebuildPendingSchedule(intervalMinutes?: number): Promise<number>;
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
   markPublished(id: string): Promise<void>;
-  markRetryable(id: string, error: string, attemptCount: number): Promise<void>;
+  markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;
   markPendingAfterDryRun(id: string): Promise<void>;
   retry(id: string): Promise<void>;
@@ -68,7 +77,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       return count ?? 0;
     },
 
-    async enqueueListing(listing) {
+    async enqueueListing(listing, options) {
       const postMode = await resolvePostMode(listing);
       const availableMediaUrls = resolveAvailableInstagramMediaUrls(listing);
       const mediaUrls = postMode === "carousel"
@@ -81,11 +90,14 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         title: listing.title,
         description: listing.description,
         destination_url: listing.destinationUrl,
-        caption: buildInstagramCaption(listing),
+        caption: options?.caption ?? buildInstagramCaption(listing),
+        caption_source: options?.captionSource ?? "rule",
+        caption_generated_at: options?.captionSource === "ai" ? new Date().toISOString() : null,
         post_mode: postMode,
         media_urls: mediaUrls,
         available_media_urls: availableMediaUrls,
-        scheduled_at: new Date().toISOString()
+        scheduled_at: options?.scheduledAt ?? new Date().toISOString(),
+        schedule_locked: false
       });
 
       if (error?.code === "23505") {
@@ -125,9 +137,12 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         .from("instagram_queue")
         .update({
           caption: input.caption.slice(0, 2200),
+          caption_source: input.captionSource ?? "manual",
+          caption_generated_at: input.captionSource === "ai" ? new Date().toISOString() : null,
           post_mode: input.postMode,
           media_urls: mediaUrls,
-          available_media_urls: availableMediaUrls
+          available_media_urls: availableMediaUrls,
+          ...(input.scheduledAt ? { scheduled_at: input.scheduledAt, schedule_locked: true } : {})
         })
         .eq("id", input.id)
         .in("status", ["pending", "failed", "cancelled"]);
@@ -137,12 +152,54 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
     },
 
+    async updateSchedule(id, scheduledAt) {
+      const { error } = await supabase
+        .from("instagram_queue")
+        .update({ scheduled_at: scheduledAt, schedule_locked: true })
+        .eq("id", id)
+        .in("status", ["pending", "failed", "cancelled"]);
+
+      if (error) {
+        throw new Error(`Failed to update Instagram queue schedule ${id}: ${error.message}`);
+      }
+    },
+
+    async rebuildPendingSchedule(intervalMinutes = DEFAULT_QUEUE_INTERVAL_MINUTES) {
+      const { data, error } = await supabase
+        .from("instagram_queue")
+        .select("id, title, description, created_at, scheduled_at")
+        .eq("status", "pending")
+        .eq("schedule_locked", false);
+
+      if (error) {
+        throw new Error(`Failed to read Instagram queue for schedule rebuild: ${error.message}`);
+      }
+
+      const rows = sortQueueRowsForPublishing(data ?? []);
+      const startDate = new Date();
+
+      const results = await Promise.all(rows.map((item, index) =>
+        supabase
+          .from("instagram_queue")
+          .update({ scheduled_at: buildScheduledAt(index, intervalMinutes, startDate), schedule_locked: false })
+          .eq("id", item.id)
+      ));
+      const updateError = results.find((result) => result.error)?.error;
+
+      if (updateError) {
+        throw new Error("Failed to rebuild Instagram queue schedule: " + updateError.message);
+      }
+
+      return rows.length;
+    },
+
     async listPending(limit) {
       const { data, error } = await supabase
         .from("instagram_queue")
         .select("*")
         .eq("status", "pending")
         .lte("scheduled_at", new Date().toISOString())
+        .order("scheduled_at", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(limit);
 
@@ -188,14 +245,16 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
     },
 
-    async markRetryable(id, errorMessage, attemptCount) {
+    async markRetryable(id, errorMessage, attemptCount, retryScheduledAt) {
       const { error } = await supabase
         .from("instagram_queue")
         .update({
           status: "pending",
           attempt_count: attemptCount,
           last_error: errorMessage,
-          processing_started_at: null
+          processing_started_at: null,
+          scheduled_at: retryScheduledAt,
+          schedule_locked: false
         })
         .eq("id", id);
 
@@ -306,7 +365,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       let query = supabase
         .from("instagram_queue")
         .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
+        .order("scheduled_at", { ascending: true })
+        .order("created_at", { ascending: true })
         .range(from, to);
 
       if (status) {

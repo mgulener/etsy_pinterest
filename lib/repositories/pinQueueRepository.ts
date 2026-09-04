@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
+import { buildScheduledAt, DEFAULT_QUEUE_INTERVAL_MINUTES, sortQueueRowsForPublishing } from "@/lib/queue/scheduling";
 import type { PinQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 
 export type QueuePageResult = {
@@ -9,11 +10,13 @@ export type QueuePageResult = {
 
 export type PinQueueRepository = {
   countByStatus(status: PinQueueStatus): Promise<number>;
-  enqueueListing(listing: NormalizedEtsyListing, boardId: string): Promise<"created" | "duplicate">;
+  enqueueListing(listing: NormalizedEtsyListing, boardId: string, options?: { scheduledAt?: string }): Promise<"created" | "duplicate">;
+  updateSchedule(id: string, scheduledAt: string): Promise<void>;
+  rebuildPendingSchedule(intervalMinutes?: number): Promise<number>;
   listPending(limit: number): Promise<PinQueueRow[]>;
   claimPending(id: string): Promise<PinQueueRow | null>;
   markPublished(id: string): Promise<void>;
-  markRetryable(id: string, error: string, attemptCount: number): Promise<void>;
+  markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;
   markPendingAfterDryRun(id: string): Promise<void>;
   retry(id: string): Promise<void>;
@@ -45,7 +48,7 @@ export function createPinQueueRepository(): PinQueueRepository {
       return count ?? 0;
     },
 
-    async enqueueListing(listing, boardId) {
+    async enqueueListing(listing, boardId, options) {
       const { error } = await supabase.from("pin_queue").insert({
         etsy_listing_id: listing.etsyListingId,
         etsy_image_id: listing.etsyImageId,
@@ -54,7 +57,8 @@ export function createPinQueueRepository(): PinQueueRepository {
         description: listing.description,
         destination_url: listing.destinationUrl,
         board_id: boardId,
-        scheduled_at: new Date().toISOString()
+        scheduled_at: options?.scheduledAt ?? new Date().toISOString(),
+        schedule_locked: false
       });
 
       if (error?.code === "23505") {
@@ -68,12 +72,54 @@ export function createPinQueueRepository(): PinQueueRepository {
       return "created";
     },
 
+    async updateSchedule(id, scheduledAt) {
+      const { error } = await supabase
+        .from("pin_queue")
+        .update({ scheduled_at: scheduledAt, schedule_locked: true })
+        .eq("id", id)
+        .in("status", ["pending", "failed", "cancelled"]);
+
+      if (error) {
+        throw new Error(`Failed to update pin queue schedule ${id}: ${error.message}`);
+      }
+    },
+
+    async rebuildPendingSchedule(intervalMinutes = DEFAULT_QUEUE_INTERVAL_MINUTES) {
+      const { data, error } = await supabase
+        .from("pin_queue")
+        .select("id, title, description, created_at, scheduled_at")
+        .eq("status", "pending")
+        .eq("schedule_locked", false);
+
+      if (error) {
+        throw new Error(`Failed to read pin queue for schedule rebuild: ${error.message}`);
+      }
+
+      const rows = sortQueueRowsForPublishing(data ?? []);
+      const startDate = new Date();
+
+      const results = await Promise.all(rows.map((item, index) =>
+        supabase
+          .from("pin_queue")
+          .update({ scheduled_at: buildScheduledAt(index, intervalMinutes, startDate), schedule_locked: false })
+          .eq("id", item.id)
+      ));
+      const updateError = results.find((result) => result.error)?.error;
+
+      if (updateError) {
+        throw new Error("Failed to rebuild pin queue schedule: " + updateError.message);
+      }
+
+      return rows.length;
+    },
+
     async listPending(limit) {
       const { data, error } = await supabase
         .from("pin_queue")
         .select("*")
         .eq("status", "pending")
         .lte("scheduled_at", new Date().toISOString())
+        .order("scheduled_at", { ascending: true })
         .order("created_at", { ascending: true })
         .limit(limit);
 
@@ -118,13 +164,15 @@ export function createPinQueueRepository(): PinQueueRepository {
       }
     },
 
-    async markRetryable(id, errorMessage, attemptCount) {
+    async markRetryable(id, errorMessage, attemptCount, retryScheduledAt) {
       const { error } = await supabase
         .from("pin_queue")
         .update({
           status: "pending",
           attempt_count: attemptCount,
-          last_error: errorMessage
+          last_error: errorMessage,
+          scheduled_at: retryScheduledAt,
+          schedule_locked: false
         })
         .eq("id", id);
 
@@ -230,7 +278,8 @@ export function createPinQueueRepository(): PinQueueRepository {
       let query = supabase
         .from("pin_queue")
         .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
+        .order("scheduled_at", { ascending: true })
+        .order("created_at", { ascending: true })
         .range(from, to);
 
       if (status) {

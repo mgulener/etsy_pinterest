@@ -93,7 +93,7 @@ function fromRow(row: SettingsRow | null): UserSettings {
     dryRun: row?.dry_run ?? process.env.DRY_RUN === "true",
     maxPinsPerRun: row?.max_pins_per_run ?? getOptionalNumber("MAX_PINS_PER_RUN", 10),
     maxPinRetries: row?.max_pin_retries ?? getOptionalNumber("MAX_PIN_RETRIES", 3),
-    maxInstagramPostsPerRun: row?.max_instagram_posts_per_run ?? getOptionalNumber("MAX_INSTAGRAM_POSTS_PER_RUN", 5),
+    maxInstagramPostsPerRun: row?.max_instagram_posts_per_run ?? getOptionalNumber("MAX_INSTAGRAM_POSTS_PER_RUN", 1),
     maxInstagramRetries: row?.max_instagram_retries ?? getOptionalNumber("MAX_INSTAGRAM_RETRIES", 3)
   };
 }

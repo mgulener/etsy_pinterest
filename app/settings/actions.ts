@@ -33,7 +33,7 @@ export async function saveSettingsAction(formData: FormData) {
     dryRun: formData.get("dryRun") === "on",
     maxPinsPerRun: parsePositiveInteger(formData.get("maxPinsPerRun"), 10),
     maxPinRetries: parsePositiveInteger(formData.get("maxPinRetries"), 3),
-    maxInstagramPostsPerRun: parsePositiveInteger(formData.get("maxInstagramPostsPerRun"), 5),
+    maxInstagramPostsPerRun: parsePositiveInteger(formData.get("maxInstagramPostsPerRun"), 1),
     maxInstagramRetries: parsePositiveInteger(formData.get("maxInstagramRetries"), 3)
   });
 

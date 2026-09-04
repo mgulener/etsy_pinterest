@@ -14,7 +14,7 @@ export type PinQueueStatus =
   | "cancelled";
 
 export type SyncJobStatus = "queued" | "running" | "succeeded" | "failed";
-export type SyncJobType = "etsy_sync" | "instagram_ai_captions";
+export type SyncJobType = "etsy_sync" | "instagram_ai_captions" | "instagram_publish";
 
 
 export type SyncJobRow = {
@@ -104,6 +104,7 @@ export type PinQueueRow = {
   attempt_count: number;
   last_error: string | null;
   scheduled_at: string;
+  schedule_locked: boolean;
   created_at: string;
   updated_at: string;
   processed_at: string | null;
@@ -131,10 +132,13 @@ export type InstagramQueueRow = {
   post_mode: "single" | "carousel";
   media_urls: Json;
   available_media_urls: Json;
+  caption_source: "rule" | "ai" | "manual";
+  caption_generated_at: string | null;
   status: PinQueueStatus;
   attempt_count: number;
   last_error: string | null;
   scheduled_at: string;
+  schedule_locked: boolean;
   processing_started_at: string | null;
   created_at: string;
   updated_at: string;
@@ -260,7 +264,7 @@ export type Database = {
       };
       instagram_queue: {
         Row: InstagramQueueRow;
-        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "post_mode" | "media_urls" | "available_media_urls" | "processing_started_at" | "created_at" | "updated_at" | "processed_at"> & {
+        Insert: Omit<InstagramQueueRow, "id" | "status" | "attempt_count" | "last_error" | "post_mode" | "media_urls" | "available_media_urls" | "caption_source" | "caption_generated_at" | "processing_started_at" | "created_at" | "updated_at" | "processed_at"> & {
           id?: string;
           status?: PinQueueStatus;
           attempt_count?: number;
@@ -268,6 +272,8 @@ export type Database = {
           post_mode?: "single" | "carousel";
           media_urls?: Json;
           available_media_urls?: Json;
+          caption_source?: "rule" | "ai" | "manual";
+          caption_generated_at?: string | null;
           processing_started_at?: string | null;
           created_at?: string;
           updated_at?: string;

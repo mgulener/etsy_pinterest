@@ -1,10 +1,13 @@
 import { getAllActiveListings } from "@/lib/etsy/client";
 import { normalizeEtsyListing } from "@/lib/etsy/listings";
+import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import { getCurrentUserSettings, getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
+import { generateInstagramCaptionWithAI } from "@/lib/instagram/aiCaption";
+import { buildScheduledAt, sortListingsForQueue } from "@/lib/queue/scheduling";
 import { logger } from "@/lib/utils/logger";
 import type {
   BootstrapSettingsRepository,
@@ -39,6 +42,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   settingsRepository: BootstrapSettingsRepository;
   boardId?: string;
   onProgress?: (progress: SyncProgress) => Promise<void> | void;
+  instagramCaptionGenerator?: (listing: NormalizedEtsyListing) => Promise<string>;
 }): Promise<SyncEtsyListingsResult> {
   const initialSyncCompleted = await input.settingsRepository.isInitialSyncCompleted();
 
@@ -64,14 +68,14 @@ export async function syncEtsyListingsWithDependencies(input: {
   const existingIds = await input.listingsRepository.getExistingEtsyListingIds(
     normalizedListings.map((listing) => listing.etsyListingId)
   );
-  await input.onProgress?.({ current: 45, message: "Saving Etsy listings" });
-  await input.listingsRepository.upsertKnownListings(normalizedListings);
-  await input.onProgress?.({ current: 55, message: "Comparing known and new listings" });
+  await input.onProgress?.({ current: 45, message: "Comparing known and new listings" });
 
   const known = existingIds.size;
-  const newListings = normalizedListings.filter(
+  const newListings = sortListingsForQueue(normalizedListings.filter(
     (listing) => !existingIds.has(listing.etsyListingId)
-  );
+  ));
+  await input.onProgress?.({ current: 50, message: "Saving Etsy listings" });
+  await input.listingsRepository.upsertKnownListings(normalizedListings);
   const created = newListings.length;
   let queued = 0;
   let instagramQueued = 0;
@@ -83,7 +87,10 @@ export async function syncEtsyListingsWithDependencies(input: {
     new: newListings.length
   });
 
+  const scheduleStart = new Date();
+
   for (const [index, listing] of newListings.entries()) {
+    const scheduledAt = buildScheduledAt(index, 15, scheduleStart);
     const queueProgress = newListings.length === 0
       ? 95
       : 55 + Math.round((index / newListings.length) * 40);
@@ -95,7 +102,8 @@ export async function syncEtsyListingsWithDependencies(input: {
       try {
         const queueResult = await input.queueRepository.enqueueListing(
           listing,
-          input.boardId
+          input.boardId,
+          { scheduledAt }
         );
 
         if (queueResult === "created") {
@@ -118,8 +126,24 @@ export async function syncEtsyListingsWithDependencies(input: {
 
     if (input.instagramQueueRepository) {
       try {
+        let caption: string | undefined;
+        let captionSource: "rule" | "ai" | undefined;
+
+        if (input.instagramCaptionGenerator) {
+          await input.onProgress?.({
+            current: queueProgress,
+            message: `Generating AI caption for new listing ${index + 1} of ${newListings.length}`
+          });
+          caption = await input.instagramCaptionGenerator(listing);
+          captionSource = "ai";
+        }
+
         const instagramQueueResult =
-          await input.instagramQueueRepository.enqueueListing(listing);
+          await input.instagramQueueRepository.enqueueListing(listing, {
+            caption,
+            captionSource,
+            scheduledAt
+          });
 
         if (instagramQueueResult === "created") {
           instagramQueued += 1;
@@ -177,7 +201,14 @@ export async function syncEtsyListingsForUser(
       : undefined,
     settingsRepository: createAppSettingsRepository(),
     boardId: pinterestEnabled ? settings.pinterestBoardId ?? undefined : undefined,
-    onProgress
+    onProgress,
+    instagramCaptionGenerator: settings.aiCaptionsEnabled && settings.openaiApiKey
+      ? (listing) => generateInstagramCaptionWithAI({
+          listing,
+          apiKey: settings.openaiApiKey,
+          model: settings.openaiModel
+        })
+      : undefined
   });
 }
 
@@ -202,6 +233,13 @@ export async function syncEtsyListings(
       : undefined,
     settingsRepository: createAppSettingsRepository(),
     boardId: pinterestEnabled ? settings.pinterestBoardId ?? undefined : undefined,
-    onProgress
+    onProgress,
+    instagramCaptionGenerator: settings.aiCaptionsEnabled && settings.openaiApiKey
+      ? (listing) => generateInstagramCaptionWithAI({
+          listing,
+          apiKey: settings.openaiApiKey,
+          model: settings.openaiModel
+        })
+      : undefined
   });
 }

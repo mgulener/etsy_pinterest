@@ -1,11 +1,14 @@
 import { ConfirmDeleteButton } from "@/app/components/ConfirmDeleteButton";
 import { Pagination } from "@/app/components/Pagination";
+import { ScheduleButton } from "@/app/components/ScheduleButton";
 import {
   cancelQueueItemAction,
   deleteQueueItemAction,
   publishNowAction,
+  rebuildPinterestScheduleAction,
   retryAllFailedAction,
-  retryQueueItemAction
+  retryQueueItemAction,
+  updatePinterestScheduleAction
 } from "@/app/actions/admin";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
@@ -26,10 +29,20 @@ function getParam(params: Record<string, string | string[] | undefined>, key: st
 }
 
 function formatDate(value: string | null) {
-  return value ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value
+    ? new Intl.DateTimeFormat("tr-TR", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Europe/Istanbul"
+    }).format(new Date(value))
+    : "-";
 }
 
 function buildActionMessage(params: Record<string, string | string[] | undefined>) {
+  if (getParam(params, "action") === "rebuild-schedule") {
+    return `Pinterest schedule rebuilt. Updated ${getParam(params, "updated") ?? 0} unlocked pending items.`;
+  }
+
   if (getParam(params, "action") !== "publish") {
     return null;
   }
@@ -91,6 +104,11 @@ export default async function QueuePage({ searchParams }: PageProps) {
           <form action={publishNowAction}>
             <SubmitButton pendingText="Publishing pins...">Publish Pins Now</SubmitButton>
           </form>
+          <form action={rebuildPinterestScheduleAction}>
+            <SubmitButton className="btn btn-outline-primary" pendingText="Rebuilding...">
+              Rebuild Schedule
+            </SubmitButton>
+          </form>
           <form action={retryAllFailedAction}>
             <SubmitButton className="ghost-button" pendingText="Retrying...">Retry Failed</SubmitButton>
           </form>
@@ -111,6 +129,9 @@ export default async function QueuePage({ searchParams }: PageProps) {
             ))}
           </select>
           <button type="submit">Search</button>
+          {search || status ? (
+            <a className="btn btn-outline-secondary" href="/pinterest/queue">Clear</a>
+          ) : null}
         </form>
       </div>
 
@@ -152,11 +173,22 @@ export default async function QueuePage({ searchParams }: PageProps) {
                   <span className={`badge ${item.status}`}>{item.status}</span>
                 </td>
                 <td>{item.attempt_count}</td>
-                <td>{formatDate(item.scheduled_at)}</td>
+                <td>
+                  <div>{formatDate(item.scheduled_at)}</div>
+                  {item.schedule_locked ? <span className="badge text-bg-secondary">Manual</span> : null}
+                </td>
                 <td className="muted">{item.last_error ?? "-"}</td>
                 <td>{formatDate(item.created_at)}</td>
                 <td>
                   <div className="d-flex justify-content-end align-items-center gap-2">
+                    {item.status === "pending" || item.status === "failed" || item.status === "cancelled" ? (
+                      <ScheduleButton
+                        id={item.id}
+                        title={item.title}
+                        scheduledAt={item.scheduled_at}
+                        action={updatePinterestScheduleAction}
+                      />
+                    ) : null}
                     {item.status === "failed" ? (
                       <form action={retryQueueItemAction} title="Retry">
                         <input type="hidden" name="id" value={item.id} />

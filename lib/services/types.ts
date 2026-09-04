@@ -18,11 +18,15 @@ export type SyncListingsRepository = {
 };
 
 export type SyncQueueRepository = {
-  enqueueListing(listing: NormalizedEtsyListing, boardId: string): Promise<"created" | "duplicate">;
+  enqueueListing(listing: NormalizedEtsyListing, boardId: string, options?: { scheduledAt?: string }): Promise<"created" | "duplicate">;
 };
 
 export type InstagramSyncQueueRepository = {
-  enqueueListing(listing: NormalizedEtsyListing): Promise<"created" | "duplicate">;
+  enqueueListing(listing: NormalizedEtsyListing, options?: {
+    caption?: string;
+    captionSource?: "rule" | "ai";
+    scheduledAt?: string;
+  }): Promise<"created" | "duplicate">;
 };
 
 export type BootstrapSettingsRepository = {
@@ -34,7 +38,7 @@ export type PublisherQueueRepository = {
   listPending(limit: number): Promise<PinQueueRow[]>;
   claimPending(id: string): Promise<PinQueueRow | null>;
   markPublished(id: string): Promise<void>;
-  markRetryable(id: string, error: string, attemptCount: number): Promise<void>;
+  markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;
   markPendingAfterDryRun(id: string): Promise<void>;
 };
@@ -57,7 +61,7 @@ export type InstagramPublisherQueueRepository = {
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
   markPublished(id: string): Promise<void>;
-  markRetryable(id: string, error: string, attemptCount: number): Promise<void>;
+  markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;
   markPendingAfterDryRun(id: string): Promise<void>;
 };

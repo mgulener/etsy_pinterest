@@ -10,6 +10,7 @@ import { bootstrapExistingListingsWithDependencies } from "../lib/services/boots
 import { buildInstagramCaption, buildInstagramHashtags } from "../lib/instagram/caption";
 import { generateInstagramCaptionWithAI } from "../lib/instagram/aiCaption";
 import { createInstagramPost } from "../lib/instagram/posts";
+import { getSeasonalQueuePriority } from "../lib/queue/scheduling";
 import { InstagramApiError } from "../lib/instagram/types";
 import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
 import { publishPinterestPinsWithDependencies } from "../lib/services/publishPinterestPins";
@@ -98,27 +99,40 @@ class MemoryListingsRepository implements SyncListingsRepository {
 }
 
 class MemorySyncQueueRepository implements SyncQueueRepository {
-  queued: NormalizedEtsyListing[] = [];
+  queued: Array<{ listing: NormalizedEtsyListing; scheduledAt?: string }> = [];
 
-  async enqueueListing(listing: NormalizedEtsyListing) {
-    if (this.queued.some((item) => item.etsyListingId === listing.etsyListingId)) {
+  async enqueueListing(listing: NormalizedEtsyListing, _boardId: string, options?: { scheduledAt?: string }) {
+    if (this.queued.some((item) => item.listing.etsyListingId === listing.etsyListingId)) {
       return "duplicate" as const;
     }
 
-    this.queued.push(listing);
+    this.queued.push({ listing, scheduledAt: options?.scheduledAt });
     return "created" as const;
   }
 }
 
 class MemoryInstagramSyncQueueRepository implements InstagramSyncQueueRepository {
-  queued: NormalizedEtsyListing[] = [];
+  queued: Array<{
+    listing: NormalizedEtsyListing;
+    caption?: string;
+    captionSource?: "rule" | "ai";
+    scheduledAt?: string;
+  }> = [];
 
-  async enqueueListing(listing: NormalizedEtsyListing) {
-    if (this.queued.some((item) => item.etsyListingId === listing.etsyListingId)) {
+  async enqueueListing(
+    listing: NormalizedEtsyListing,
+    options?: { caption?: string; captionSource?: "rule" | "ai"; scheduledAt?: string }
+  ) {
+    if (this.queued.some((item) => item.listing.etsyListingId === listing.etsyListingId)) {
       return "duplicate" as const;
     }
 
-    this.queued.push(listing);
+    this.queued.push({
+      listing,
+      caption: options?.caption,
+      captionSource: options?.captionSource,
+      scheduledAt: options?.scheduledAt
+    });
     return "created" as const;
   }
 }
@@ -137,6 +151,7 @@ function makeQueueItem(input: Partial<PinQueueRow> & { id: string; etsy_listing_
     attempt_count: input.attempt_count ?? 0,
     last_error: input.last_error ?? null,
     scheduled_at: input.scheduled_at ?? new Date().toISOString(),
+    schedule_locked: input.schedule_locked ?? false,
     created_at: input.created_at ?? new Date().toISOString(),
     updated_at: input.updated_at ?? new Date().toISOString(),
     processed_at: input.processed_at ?? null
@@ -158,10 +173,13 @@ function makeInstagramQueueItem(
     post_mode: input.post_mode ?? "single",
     media_urls: input.media_urls ?? [`https://img.test/${input.etsy_listing_id}.jpg`],
     available_media_urls: input.available_media_urls ?? input.media_urls ?? [`https://img.test/${input.etsy_listing_id}.jpg`],
+    caption_source: input.caption_source ?? "rule",
+    caption_generated_at: input.caption_generated_at ?? null,
     status: input.status ?? "pending",
     attempt_count: input.attempt_count ?? 0,
     last_error: input.last_error ?? null,
     scheduled_at: input.scheduled_at ?? new Date().toISOString(),
+    schedule_locked: input.schedule_locked ?? false,
     processing_started_at: input.processing_started_at ?? null,
     created_at: input.created_at ?? new Date().toISOString(),
     updated_at: input.updated_at ?? new Date().toISOString(),
@@ -200,13 +218,14 @@ class MemoryPublisherQueueRepository implements PublisherQueueRepository {
     }
   }
 
-  async markRetryable(id: string, error: string, attemptCount: number) {
+  async markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string) {
     const item = this.items.find((candidate) => candidate.id === id);
 
     if (item) {
       item.status = "pending";
       item.last_error = error;
       item.attempt_count = attemptCount;
+      item.scheduled_at = retryScheduledAt;
     }
   }
 
@@ -260,13 +279,14 @@ class MemoryInstagramPublisherQueueRepository implements InstagramPublisherQueue
     }
   }
 
-  async markRetryable(id: string, error: string, attemptCount: number) {
+  async markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string) {
     const item = this.items.find((candidate) => candidate.id === id);
 
     if (item) {
       item.status = "pending";
       item.last_error = error;
       item.attempt_count = attemptCount;
+      item.scheduled_at = retryScheduledAt;
     }
   }
 
@@ -351,22 +371,39 @@ test("Etsy sync runs as a durable background job", () => {
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0009_add_etsy_listing_image_urls.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0010_add_ai_caption_settings.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0011_add_instagram_ai_caption_job_type.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0012_add_queue_caption_source.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0013_add_queue_schedule_lock.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0014_add_instagram_publish_job_type.sql")), true);
 });
 
 test("queue action UI uses icons and enabled platform settings", () => {
   const listingsPage = readFileSync(join(projectRoot, "app/etsy/listings/page.tsx"), "utf8");
   const pinterestQueuePage = readFileSync(join(projectRoot, "app/pinterest/queue/page.tsx"), "utf8");
+  const scheduleButton = readFileSync(join(projectRoot, "app/components/ScheduleButton.tsx"), "utf8");
+  const captionModalEditor = readFileSync(join(projectRoot, "app/instagram/queue/CaptionModalEditor.tsx"), "utf8");
+  const instagramCaptionRoute = readFileSync(join(projectRoot, "app/api/instagram/caption/route.ts"), "utf8");
 
   assert.match(listingsPage, /settings\.pinterestEnabled/);
   assert.match(listingsPage, /settings\.instagramEnabled/);
   const instagramQueuePage = readFileSync(join(projectRoot, "app/instagram/queue/page.tsx"), "utf8");
 
   assert.match(pinterestQueuePage, /function CancelIcon/);
+  assert.match(pinterestQueuePage, /\/pinterest\/queue">Clear/);
+  assert.match(scheduleButton, /datetime-local/);
   assert.match(instagramQueuePage, /function CancelIcon/);
   assert.doesNotMatch(pinterestQueuePage, />C<\/span>/);
   assert.doesNotMatch(instagramQueuePage, />C<\/span>/);
   assert.match(instagramQueuePage, /generateInstagramCaptionsAction/);
+  assert.match(instagramQueuePage, /rebuildInstagramScheduleAction/);
+  assert.match(instagramQueuePage, /caption_source/);
+  assert.match(instagramQueuePage, /schedule_locked/);
+  assert.match(instagramQueuePage, /Europe\/Istanbul/);
+  assert.match(instagramQueuePage, /\/instagram\/queue">Clear/);
   assert.match(instagramQueuePage, /instagram-ai-captions\/latest/);
+  assert.match(captionModalEditor, /fetch\("\/api\/instagram\/caption"/);
+  assert.match(captionModalEditor, /value=\{draftCaption\}/);
+  assert.doesNotMatch(captionModalEditor, /formAction=\{regenerateInstagramCaptionAction\}/);
+  assert.match(instagramCaptionRoute, /NextResponse\.json\(\{ caption \}\)/);
   assert.equal(existsSync(join(projectRoot, "app/api/jobs/instagram-ai-captions/latest/route.ts")), true);
   assert.equal(existsSync(join(projectRoot, "app/api/jobs/instagram-ai-captions/run/route.ts")), true);
 });
@@ -379,6 +416,9 @@ test("canonical route architecture has no legacy app routes", () => {
     "app/api/etsy/sync/route.ts",
     "app/api/pinterest/publish/route.ts",
     "app/api/instagram/publish/route.ts",
+    "app/api/instagram/caption/route.ts",
+    "app/api/jobs/instagram-publish/latest/route.ts",
+    "app/api/jobs/instagram-publish/run/route.ts",
     "app/api/jobs/etsy-sync/latest/route.ts",
     "app/api/jobs/etsy-sync/run/route.ts",
     "app/etsy/listings/page.tsx",
@@ -438,7 +478,7 @@ test("new listing enters the Pinterest queue", async () => {
 
   assert.equal(result.created, 1);
   assert.equal(result.queued, 1);
-  assert.equal(queueRepository.queued[0]?.etsyListingId, 101);
+  assert.equal(queueRepository.queued[0]?.listing.etsyListingId, 101);
 });
 
 test("new listing enters the Instagram queue when enabled", async () => {
@@ -458,7 +498,7 @@ test("new listing enters the Instagram queue when enabled", async () => {
   assert.equal(result.created, 1);
   assert.equal(result.queued, 1);
   assert.equal(result.instagramQueued, 1);
-  assert.equal(instagramQueueRepository.queued[0]?.etsyListingId, 101);
+  assert.equal(instagramQueueRepository.queued[0]?.listing.etsyListingId, 101);
 });
 
 test("sync can run with Pinterest queue disabled", async () => {
@@ -475,7 +515,64 @@ test("sync can run with Pinterest queue disabled", async () => {
   assert.equal(result.created, 1);
   assert.equal(result.queued, 0);
   assert.equal(result.instagramQueued, 1);
-  assert.equal(instagramQueueRepository.queued[0]?.etsyListingId, 101);
+  assert.equal(instagramQueueRepository.queued[0]?.listing.etsyListingId, 101);
+});
+
+test("new listings are queued by seasonal priority with 15 minute schedule spacing", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const queueRepository = new MemorySyncQueueRepository();
+  const instagramQueueRepository = new MemoryInstagramSyncQueueRepository();
+  const now = Date.now();
+
+  await syncEtsyListingsWithDependencies({
+    etsy: {
+      getAllActiveListings: async () => [
+        { ...etsyListing(201), title: "Christmas Ornament", original_creation_timestamp: 100 },
+        { ...etsyListing(202), title: "September Classroom Decor", original_creation_timestamp: 90 },
+        { ...etsyListing(203), title: "Halloween Party Sign", original_creation_timestamp: 80 }
+      ]
+    },
+    listingsRepository,
+    queueRepository,
+    instagramQueueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    boardId: "board-1"
+  });
+
+  assert.deepEqual(
+    instagramQueueRepository.queued.map((item) => item.listing.etsyListingId),
+    [202, 203, 201]
+  );
+  assert.equal(getSeasonalQueuePriority(instagramQueueRepository.queued[0].listing), 10);
+
+  const first = new Date(instagramQueueRepository.queued[0].scheduledAt ?? "").getTime();
+  const second = new Date(instagramQueueRepository.queued[1].scheduledAt ?? "").getTime();
+  const third = new Date(instagramQueueRepository.queued[2].scheduledAt ?? "").getTime();
+
+  assert.equal(second - first, 15 * 60_000);
+  assert.equal(third - second, 15 * 60_000);
+  assert.equal(first >= now - 1000, true);
+});
+
+test("new Instagram queue items can receive AI captions during Etsy sync", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const instagramQueueRepository = new MemoryInstagramSyncQueueRepository();
+  const generatedFor: number[] = [];
+
+  await syncEtsyListingsWithDependencies({
+    etsy: { getAllActiveListings: async () => [etsyListing(101)] },
+    listingsRepository,
+    instagramQueueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    instagramCaptionGenerator: async (listing) => {
+      generatedFor.push(listing.etsyListingId);
+      return "AI caption\n\n#specificproduct";
+    }
+  });
+
+  assert.deepEqual(generatedFor, [101]);
+  assert.equal(instagramQueueRepository.queued[0]?.caption, "AI caption\n\n#specificproduct");
+  assert.equal(instagramQueueRepository.queued[0]?.captionSource, "ai");
 });
 
 test("Instagram captions use product-specific hashtags", () => {
@@ -663,8 +760,9 @@ test("known Etsy auto-renew does not create a duplicate Instagram queue item", a
 });
 
 test("Pinterest API failure does not create a pinterest post", async () => {
+  const initialScheduledAt = new Date(Date.now() - 60_000).toISOString();
   const queueRepository = new MemoryPublisherQueueRepository([
-    makeQueueItem({ id: "q1", etsy_listing_id: 101 })
+    makeQueueItem({ id: "q1", etsy_listing_id: 101, scheduled_at: initialScheduledAt })
   ]);
   const postsRepository = new MemoryPostsRepository();
 
@@ -683,6 +781,9 @@ test("Pinterest API failure does not create a pinterest post", async () => {
 
   assert.equal(result.retried, 1);
   assert.equal(postsRepository.posts.size, 0);
+  assert.equal(queueRepository.items[0]?.status, "pending");
+  assert.equal(queueRepository.items[0]?.attempt_count, 1);
+  assert.equal(new Date(queueRepository.items[0]?.scheduled_at ?? 0).getTime() > new Date(initialScheduledAt).getTime(), true);
 });
 
 test("Pinterest API success creates a pinterest post", async () => {
@@ -706,8 +807,9 @@ test("Pinterest API success creates a pinterest post", async () => {
 });
 
 test("Instagram API failure does not create an instagram post", async () => {
+  const initialScheduledAt = new Date(Date.now() - 60_000).toISOString();
   const queueRepository = new MemoryInstagramPublisherQueueRepository([
-    makeInstagramQueueItem({ id: "igq1", etsy_listing_id: 101 })
+    makeInstagramQueueItem({ id: "igq1", etsy_listing_id: 101, scheduled_at: initialScheduledAt })
   ]);
   const postsRepository = new MemoryInstagramPostsRepository();
 
@@ -726,6 +828,9 @@ test("Instagram API failure does not create an instagram post", async () => {
 
   assert.equal(result.retried, 1);
   assert.equal(postsRepository.posts.size, 0);
+  assert.equal(queueRepository.items[0]?.status, "pending");
+  assert.equal(queueRepository.items[0]?.attempt_count, 1);
+  assert.equal(new Date(queueRepository.items[0]?.scheduled_at ?? 0).getTime() > new Date(initialScheduledAt).getTime(), true);
 });
 
 test("Instagram API success creates an instagram post", async () => {
@@ -1146,7 +1251,7 @@ test("new listing after bootstrap enters the queue", async () => {
   });
 
   assert.equal(result.created, 1);
-  assert.deepEqual(queueRepository.queued.map((listing) => listing.etsyListingId), [103]);
+  assert.deepEqual(queueRepository.queued.map((item) => item.listing.etsyListingId), [103]);
 });
 
 test("same queue item concurrent processing creates at most one Pinterest pin", async () => {

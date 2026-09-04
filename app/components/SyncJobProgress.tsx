@@ -14,7 +14,13 @@ type SyncJobProgressProps = {
 const activeStatuses = new Set(["queued", "running"]);
 
 function formatDate(value: string | null) {
-  return value ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
+  return value
+    ? new Intl.DateTimeFormat("tr-TR", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Europe/Istanbul"
+    }).format(new Date(value))
+    : "-";
 }
 
 function resultSummary(job: SyncJobRow) {
@@ -23,11 +29,23 @@ function resultSummary(job: SyncJobRow) {
   }
 
   const result = job.result as Record<string, unknown>;
+  if ("published" in result || "retried" in result || "failed" in result) {
+    const selected = Number(result.selected ?? 0);
+    const claimed = Number(result.claimed ?? 0);
+    const published = Number(result.published ?? 0);
+    const retried = Number(result.retried ?? 0);
+    const failed = Number(result.failed ?? 0);
+    const dryRun = Boolean(result.dryRun ?? false);
+
+    return `Selected ${selected}, claimed ${claimed}, published ${published}, retried ${retried}, failed ${failed}, dry run ${dryRun}.`;
+  }
+
   if ("generated" in result || "selected" in result) {
     const selected = Number(result.selected ?? 0);
     const generated = Number(result.generated ?? 0);
+    const failed = Number(result.failed ?? 0);
 
-    return `Selected ${selected}, generated ${generated}.`;
+    return `Selected ${selected}, generated ${generated}, failed ${failed}.`;
   }
 
   const fetched = Number(result.fetched ?? 0);

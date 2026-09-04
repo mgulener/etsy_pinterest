@@ -2,6 +2,7 @@ import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepositor
 import { createPin } from "@/lib/pinterest/pins";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
+import { buildScheduledAt } from "@/lib/queue/scheduling";
 import { logger } from "@/lib/utils/logger";
 import type {
   PinterestPublisher,
@@ -122,7 +123,7 @@ export async function publishPinterestPinsWithDependencies(input: {
           message
         });
       } else {
-        await input.queueRepository.markRetryable(item.id, message, nextAttemptCount);
+        await input.queueRepository.markRetryable(item.id, message, nextAttemptCount, buildScheduledAt(1));
         retried += 1;
         logger.warn("QUEUE", "Queue item returned to pending for retry", {
           etsyListingId: item.etsy_listing_id,

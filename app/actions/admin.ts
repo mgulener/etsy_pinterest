@@ -5,10 +5,10 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireAdminSession } from "@/lib/auth/session";
 import { bootstrapExistingListings } from "@/lib/services/bootstrap";
-import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
 import { publishPinterestPins } from "@/lib/services/publishPinterestPins";
 import { runEtsySyncJob } from "@/lib/services/syncJobRunner";
 import { runInstagramAiCaptionJob } from "@/lib/services/instagramAiCaptionJobRunner";
+import { runInstagramPublishJob } from "@/lib/services/instagramPublishJobRunner";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
@@ -127,12 +127,29 @@ export async function publishNowAction() {
 }
 
 export async function publishInstagramNowAction() {
-  await requireAdminSession();
-  const result = await publishInstagramPosts();
-  revalidatePath("/");
-  redirect(
-    `/instagram/queue?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
-  );
+  const session = await requireAdminSession();
+  let destination: string;
+
+  try {
+    const jobsRepository = createSyncJobsRepository();
+    const activeJob = await jobsRepository.getActiveForUser(session.userId, "instagram_publish");
+    const job = activeJob ?? await jobsRepository.create({
+      userId: session.userId,
+      type: "instagram_publish",
+      message: "Queued Instagram publish run"
+    });
+
+    if (job.status === "queued") {
+      after(() => runInstagramPublishJob(job.id, session.userId));
+    }
+
+    revalidatePath("/instagram/queue");
+    destination = `/instagram/queue?action=publish-instagram-started&job=${job.id}`;
+  } catch (error) {
+    destination = `/instagram/queue?action=publish-instagram&status=error&message=${encodeURIComponent(toActionErrorMessage(error))}`;
+  }
+
+  redirect(destination);
 }
 
 export async function generateInstagramCaptionsAction(formData?: FormData) {
@@ -225,6 +242,55 @@ export async function retryInstagramQueueItemAction(formData: FormData) {
   revalidatePath("/instagram/queue");
 }
 
+function parseScheduledAt(formData: FormData) {
+  const rawValue = String(formData.get("scheduledAt") ?? "");
+  const date = new Date(rawValue);
+
+  if (!rawValue || Number.isNaN(date.getTime())) {
+    throw new Error("Invalid publish time.");
+  }
+
+  return date.toISOString();
+}
+
+export async function updatePinterestScheduleAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+
+  if (id) {
+    await createPinQueueRepository().updateSchedule(id, parseScheduledAt(formData));
+  }
+
+  revalidatePath("/pinterest/queue");
+}
+
+export async function updateInstagramScheduleAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+
+  if (id) {
+    await createInstagramQueueRepository().updateSchedule(id, parseScheduledAt(formData));
+  }
+
+  revalidatePath("/instagram/queue");
+}
+
+export async function rebuildPinterestScheduleAction() {
+  await requireAdminSession();
+  const updated = await createPinQueueRepository().rebuildPendingSchedule(15);
+
+  revalidatePath("/pinterest/queue");
+  redirect(`/pinterest/queue?action=rebuild-schedule&updated=${updated}`);
+}
+
+export async function rebuildInstagramScheduleAction() {
+  await requireAdminSession();
+  const updated = await createInstagramQueueRepository().rebuildPendingSchedule(15);
+
+  revalidatePath("/instagram/queue");
+  redirect(`/instagram/queue?action=rebuild-schedule&updated=${updated}`);
+}
+
 export async function updateInstagramQueueItemAction(formData: FormData) {
   await requireAdminSession();
   const id = String(formData.get("id") ?? "");
@@ -241,7 +307,8 @@ export async function updateInstagramQueueItemAction(formData: FormData) {
       id,
       caption,
       postMode,
-      selectedMediaUrls
+      selectedMediaUrls,
+      captionSource: "manual"
     });
   }
 
@@ -295,7 +362,8 @@ export async function regenerateInstagramCaptionAction(formData: FormData) {
       id,
       caption,
       postMode: item.post_mode,
-      selectedMediaUrls
+      selectedMediaUrls,
+      captionSource: "ai"
     });
 
     revalidatePath("/instagram/queue");
@@ -380,6 +448,7 @@ export async function queueInstagramPostAgainAction(formData: FormData) {
       attempt_count: 0,
       last_error: null,
       scheduled_at: new Date().toISOString(),
+      schedule_locked: false,
       processing_started_at: null,
       processed_at: null
     },
