@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import { getAllActiveListings } from "../lib/etsy/client";
+import { extractEtsyShopId } from "../lib/etsy/auth";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
 import { buildInstagramCaption, buildInstagramHashtags } from "../lib/instagram/caption";
@@ -933,6 +934,25 @@ test("Etsy pagination fetches 1300+ listings", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Etsy OAuth callback does not leak provider errors in redirect URLs", () => {
+  const callbackRoute = readFileSync(join(projectRoot, "app/api/auth/etsy/callback/route.ts"), "utf8");
+  const settingsPage = readFileSync(join(projectRoot, "app/settings/page.tsx"), "utf8");
+
+  assert.doesNotMatch(callbackRoute, /message: errorMessage/);
+  assert.doesNotMatch(callbackRoute, /warning: result\.warning/);
+  assert.match(callbackRoute, /warning: "shop-id"/);
+  assert.match(settingsPage, /keystring:shared_secret/);
+});
+
+test("Etsy shop ID can be extracted from OAuth shop responses", () => {
+  assert.equal(extractEtsyShopId({ shop_id: 123 }), 123);
+  assert.equal(extractEtsyShopId({ results: [{ shop_id: 456 }] }), 456);
+  assert.throws(
+    () => extractEtsyShopId({ results: [] }),
+    /Etsy shop ID was not found/
+  );
 });
 
 test("Etsy auth explains missing OAuth token", async () => {

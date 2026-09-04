@@ -26,6 +26,11 @@ type EtsyTokenResponse = {
   token_type?: string;
 };
 
+type EtsyShopResponse = {
+  shop_id?: number;
+  results?: Array<{ shop_id?: number }>;
+};
+
 function base64UrlEncode(bytes: Uint8Array) {
   return Buffer.from(bytes)
     .toString("base64")
@@ -44,9 +49,19 @@ function getEtsyKeystringFromApiKey(apiKey: string) {
   return apiKey.split(":")[0];
 }
 
+export function extractEtsyShopId(response: EtsyShopResponse) {
+  const shopId = response.shop_id ?? response.results?.[0]?.shop_id;
+
+  if (!shopId) {
+    throw new Error("Etsy shop ID was not found in the OAuth account response.");
+  }
+
+  return shopId;
+}
+
 async function getEtsyApiKeyForUser(userId?: string) {
   const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
-  return requireSetting(settings.etsyApiKey, "Etsy API keystring");
+  return requireSetting(settings.etsyApiKey, "Etsy API keystring and shared secret");
 }
 
 async function getRedirectUri(request: Request, userId?: string) {
@@ -129,7 +144,7 @@ async function exchangeToken(params: URLSearchParams) {
   return (await response.json()) as EtsyTokenResponse;
 }
 
-export async function handleEtsyOAuthCallback(request: Request) {
+export async function handleEtsyOAuthCallback(request: Request): Promise<{ shopIdSaved: boolean; warning?: string }> {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -159,10 +174,22 @@ export async function handleEtsyOAuthCallback(request: Request) {
   });
   const token = await exchangeToken(params);
   await saveToken(oauthCookie.userId, token);
-  await discoverAndSaveShopId(oauthCookie.userId, token.access_token);
+
+  let shopIdSaved = true;
+  let warning: string | undefined;
+
+  try {
+    await discoverAndSaveShopId(oauthCookie.userId, token.access_token);
+  } catch (error) {
+    shopIdSaved = false;
+    warning = error instanceof Error ? error.message : "Etsy shop ID could not be detected automatically.";
+    console.error("[ETSY_OAUTH] Shop discovery failed", error);
+  }
 
   const cookieStore = await cookies();
   cookieStore.delete(ETSY_OAUTH_COOKIE);
+
+  return { shopIdSaved, warning };
 }
 
 async function saveToken(userId: string, token: EtsyTokenResponse) {
@@ -182,7 +209,7 @@ async function etsyAuthorizedRequest<T>(path: string, accessToken: string, userI
   const response = await fetch(`${ETSY_API_URL}${path}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "x-api-key": getEtsyKeystringFromApiKey(apiKey)
+      "x-api-key": apiKey
     },
     cache: "no-store"
   });
@@ -197,13 +224,13 @@ async function etsyAuthorizedRequest<T>(path: string, accessToken: string, userI
 
 async function discoverAndSaveShopId(userId: string, accessToken: string) {
   const me = await etsyAuthorizedRequest<{ user_id: number }>("/users/me", accessToken, userId);
-  const shop = await etsyAuthorizedRequest<{ shop_id: number }>(
+  const shop = await etsyAuthorizedRequest<EtsyShopResponse>(
     `/users/${me.user_id}/shops`,
     accessToken,
     userId
   );
 
-  await saveEtsyShopIdForUser(userId, shop.shop_id);
+  await saveEtsyShopIdForUser(userId, extractEtsyShopId(shop));
 }
 
 export async function getEtsyAccessToken() {
@@ -242,5 +269,5 @@ export async function getEtsyShopId() {
 }
 
 export async function getEtsyApiKey() {
-  return getEtsyKeystringFromApiKey(await getEtsyApiKeyForUser());
+  return getEtsyApiKeyForUser();
 }

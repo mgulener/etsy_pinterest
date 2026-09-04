@@ -23,6 +23,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const settings = await getSettingsForUser(session.userId);
   const params = (await searchParams) ?? {};
   const saved = getParam(params, "saved") === "1";
+  const etsyStatus = getParam(params, "etsy");
+  const etsyWarning = getParam(params, "warning");
 
   return (
     <main className="page">
@@ -36,18 +38,27 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         </a>
       </div>
 
-      {saved ? <section className="status-banner">Settings saved.</section> : null}
+      {saved ? <section className="alert alert-success" role="alert">Settings saved.</section> : null}
+      {etsyStatus === "error" ? (
+        <section className="alert alert-danger" role="alert">Etsy connection failed. Check your Etsy keystring and shared secret, then try again.</section>
+      ) : null}
+      {etsyWarning === "shop-id" ? (
+        <section className="alert alert-warning" role="alert">Etsy connected, but the shop ID could not be detected automatically. Enter the Etsy shop ID manually and save settings.</section>
+      ) : null}
+      {etsyStatus === "connected" && !etsyWarning ? (
+        <section className="alert alert-success" role="alert">Etsy connected successfully.</section>
+      ) : null}
 
       <form action={saveSettingsAction} className="settings-form">
         <section className="settings-section">
           <div>
             <h2>Etsy</h2>
-            <p>Use the Etsy developer keystring and callback URL for this user&apos;s shop connection.</p>
+            <p>Use the Etsy developer keystring, shared secret, and callback URL for this user&apos;s shop connection.</p>
           </div>
           <div className="settings-grid">
             <label>
-              Etsy API keystring
-              <input name="etsyApiKey" defaultValue={value(settings.etsyApiKey)} placeholder="keystring" />
+              Etsy keystring and shared secret
+              <input name="etsyApiKey" defaultValue={value(settings.etsyApiKey)} placeholder="keystring:shared_secret" />
             </label>
             <label>
               Etsy redirect URI
