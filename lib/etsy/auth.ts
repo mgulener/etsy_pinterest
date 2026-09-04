@@ -1,24 +1,21 @@
 import { cookies } from "next/headers";
-import { getRequiredEnv } from "@/lib/config/env";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getCurrentSession, requireAdminSession } from "@/lib/auth/session";
+import {
+  getCurrentUserSettings,
+  getSettingsForUser,
+  requireSetting,
+  saveEtsyShopIdForUser,
+  saveEtsyTokenForUser
+} from "@/lib/repositories/userSettingsRepository";
 
 const ETSY_OAUTH_COOKIE = "etsy_oauth_pkce";
-const ETSY_TOKEN_SETTING = "etsy_oauth_token";
-const ETSY_SHOP_ID_SETTING = "etsy_shop_id";
 const ETSY_TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token";
 const ETSY_API_URL = "https://api.etsy.com/v3/application";
 
 type EtsyOAuthCookie = {
   state: string;
   codeVerifier: string;
-};
-
-type EtsyStoredToken = {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number;
-  scope?: string;
-  token_type?: string;
+  userId: string;
 };
 
 type EtsyTokenResponse = {
@@ -43,15 +40,20 @@ function randomBase64Url(byteLength = 32) {
   return base64UrlEncode(bytes);
 }
 
-function getEtsyKeystring() {
-  return getRequiredEnv("ETSY_API_KEY").split(":")[0];
+function getEtsyKeystringFromApiKey(apiKey: string) {
+  return apiKey.split(":")[0];
 }
 
-function getRedirectUri(request: Request) {
-  const etsyRedirectUri = process.env.ETSY_REDIRECT_URI;
+async function getEtsyApiKeyForUser(userId?: string) {
+  const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
+  return requireSetting(settings.etsyApiKey, "Etsy API keystring");
+}
 
-  if (etsyRedirectUri) {
-    return etsyRedirectUri;
+async function getRedirectUri(request: Request, userId?: string) {
+  const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
+
+  if (settings.etsyRedirectUri) {
+    return settings.etsyRedirectUri;
   }
 
   return `${new URL(request.url).origin}/api/auth/etsy/callback`;
@@ -67,14 +69,16 @@ async function createCodeChallenge(codeVerifier: string) {
 }
 
 export async function createEtsyAuthorizationUrl(request: Request) {
+  const session = await requireAdminSession();
   const state = randomBase64Url();
   const codeVerifier = randomBase64Url(64);
   const codeChallenge = await createCodeChallenge(codeVerifier);
   const cookieStore = await cookies();
+  const apiKey = await getEtsyApiKeyForUser(session.userId);
 
   cookieStore.set(
     ETSY_OAUTH_COOKIE,
-    Buffer.from(JSON.stringify({ state, codeVerifier })).toString("base64url"),
+    Buffer.from(JSON.stringify({ state, codeVerifier, userId: session.userId })).toString("base64url"),
     {
       httpOnly: true,
       sameSite: "lax",
@@ -86,8 +90,8 @@ export async function createEtsyAuthorizationUrl(request: Request) {
 
   const url = new URL("https://www.etsy.com/oauth/connect");
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id", getEtsyKeystring());
-  url.searchParams.set("redirect_uri", getRedirectUri(request));
+  url.searchParams.set("client_id", getEtsyKeystringFromApiKey(apiKey));
+  url.searchParams.set("redirect_uri", await getRedirectUri(request, session.userId));
   url.searchParams.set("scope", "listings_r shops_r");
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", codeChallenge);
@@ -105,62 +109,6 @@ async function readOauthCookie() {
   }
 
   return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as EtsyOAuthCookie;
-}
-
-async function saveToken(token: EtsyTokenResponse) {
-  const expiresAt = Date.now() + token.expires_in * 1000 - 60_000;
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("app_settings").upsert(
-    {
-      key: ETSY_TOKEN_SETTING,
-      value: {
-        access_token: token.access_token,
-        refresh_token: token.refresh_token,
-        expires_at: expiresAt,
-        scope: token.scope,
-        token_type: token.token_type
-      }
-    },
-    {
-      onConflict: "key"
-    }
-  );
-
-  if (error) {
-    throw new Error(`Failed to save Etsy OAuth token: ${error.message}`);
-  }
-}
-
-async function saveShopId(shopId: number) {
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("app_settings").upsert(
-    {
-      key: ETSY_SHOP_ID_SETTING,
-      value: shopId
-    },
-    {
-      onConflict: "key"
-    }
-  );
-
-  if (error) {
-    throw new Error(`Failed to save Etsy shop id: ${error.message}`);
-  }
-}
-
-async function readStoredToken() {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("app_settings")
-    .select("value")
-    .eq("key", ETSY_TOKEN_SETTING)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to read Etsy OAuth token: ${error.message}`);
-  }
-
-  return data?.value as EtsyStoredToken | undefined;
 }
 
 async function exchangeToken(params: URLSearchParams) {
@@ -201,26 +149,40 @@ export async function handleEtsyOAuthCallback(request: Request) {
     throw new Error("Invalid Etsy OAuth state.");
   }
 
+  const apiKey = await getEtsyApiKeyForUser(oauthCookie.userId);
   const params = new URLSearchParams({
     grant_type: "authorization_code",
-    client_id: getEtsyKeystring(),
-    redirect_uri: getRedirectUri(request),
+    client_id: getEtsyKeystringFromApiKey(apiKey),
+    redirect_uri: await getRedirectUri(request, oauthCookie.userId),
     code,
     code_verifier: oauthCookie.codeVerifier
   });
   const token = await exchangeToken(params);
-  await saveToken(token);
-  await discoverAndSaveShopId(token.access_token);
+  await saveToken(oauthCookie.userId, token);
+  await discoverAndSaveShopId(oauthCookie.userId, token.access_token);
 
   const cookieStore = await cookies();
   cookieStore.delete(ETSY_OAUTH_COOKIE);
 }
 
-async function etsyAuthorizedRequest<T>(path: string, accessToken: string) {
+async function saveToken(userId: string, token: EtsyTokenResponse) {
+  const expiresAt = Date.now() + token.expires_in * 1000 - 60_000;
+  await saveEtsyTokenForUser({
+    userId,
+    accessToken: token.access_token,
+    refreshToken: token.refresh_token,
+    expiresAt,
+    scope: token.scope,
+    tokenType: token.token_type
+  });
+}
+
+async function etsyAuthorizedRequest<T>(path: string, accessToken: string, userId?: string) {
+  const apiKey = await getEtsyApiKeyForUser(userId);
   const response = await fetch(`${ETSY_API_URL}${path}`, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "x-api-key": getRequiredEnv("ETSY_API_KEY")
+      "x-api-key": getEtsyKeystringFromApiKey(apiKey)
     },
     cache: "no-store"
   });
@@ -233,62 +195,52 @@ async function etsyAuthorizedRequest<T>(path: string, accessToken: string) {
   return (await response.json()) as T;
 }
 
-async function discoverAndSaveShopId(accessToken: string) {
-  const me = await etsyAuthorizedRequest<{ user_id: number }>("/users/me", accessToken);
+async function discoverAndSaveShopId(userId: string, accessToken: string) {
+  const me = await etsyAuthorizedRequest<{ user_id: number }>("/users/me", accessToken, userId);
   const shop = await etsyAuthorizedRequest<{ shop_id: number }>(
     `/users/${me.user_id}/shops`,
-    accessToken
+    accessToken,
+    userId
   );
 
-  await saveShopId(shop.shop_id);
+  await saveEtsyShopIdForUser(userId, shop.shop_id);
 }
 
 export async function getEtsyAccessToken() {
-  if (process.env.ETSY_ACCESS_TOKEN) {
-    return process.env.ETSY_ACCESS_TOKEN;
+  const session = await getCurrentSession();
+  const settings = await getSettingsForUser(session?.userId);
+
+  if (!settings.etsyAccessToken) {
+    throw new Error("Missing Etsy OAuth token. Connect Etsy from Settings.");
   }
 
-  const storedToken = await readStoredToken();
-
-  if (!storedToken) {
-    throw new Error("Missing Etsy OAuth token. Visit /api/auth/etsy/start as an admin.");
+  if (!settings.etsyRefreshToken || !settings.etsyTokenExpiresAt || settings.etsyTokenExpiresAt > Date.now()) {
+    return settings.etsyAccessToken;
   }
 
-  if (storedToken.expires_at > Date.now()) {
-    return storedToken.access_token;
-  }
-
+  const apiKey = requireSetting(settings.etsyApiKey, "Etsy API keystring");
   const token = await exchangeToken(
     new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: getEtsyKeystring(),
-      refresh_token: storedToken.refresh_token
+      client_id: getEtsyKeystringFromApiKey(apiKey),
+      refresh_token: settings.etsyRefreshToken
     })
   );
-  await saveToken(token);
+
+  if (session?.userId) {
+    await saveToken(session.userId, token);
+  }
 
   return token.access_token;
 }
 
 export async function getEtsyShopId() {
-  if (process.env.ETSY_SHOP_ID) {
-    return process.env.ETSY_SHOP_ID;
-  }
+  const session = await getCurrentSession();
+  const settings = await getSettingsForUser(session?.userId);
 
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("app_settings")
-    .select("value")
-    .eq("key", ETSY_SHOP_ID_SETTING)
-    .maybeSingle();
+  return requireSetting(settings.etsyShopId, "Etsy shop ID");
+}
 
-  if (error) {
-    throw new Error(`Failed to read Etsy shop id: ${error.message}`);
-  }
-
-  if (typeof data?.value !== "number" && typeof data?.value !== "string") {
-    throw new Error("Missing Etsy shop id. Complete Etsy OAuth or set ETSY_SHOP_ID.");
-  }
-
-  return String(data.value);
+export async function getEtsyApiKey() {
+  return getEtsyKeystringFromApiKey(await getEtsyApiKeyForUser());
 }

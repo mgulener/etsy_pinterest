@@ -11,9 +11,13 @@ export default function LoginPage() {
     <main className="login-shell">
       <form action={formAction} className="login-panel">
         <div>
-          <p className="eyebrow">Admin</p>
-          <h1>Pinterest Automation</h1>
+          <p className="eyebrow">Account</p>
+          <h1>Etsy Social Automation</h1>
         </div>
+        <label>
+          Email
+          <input name="email" type="email" autoComplete="email" required />
+        </label>
         <label>
           Password
           <input name="password" type="password" autoComplete="current-password" required />

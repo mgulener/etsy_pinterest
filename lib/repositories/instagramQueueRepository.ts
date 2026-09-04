@@ -30,15 +30,17 @@ export type InstagramQueueRepository = {
   retry(id: string): Promise<void>;
   retryAllFailed(): Promise<void>;
   cancel(id: string): Promise<void>;
+  delete(id: string): Promise<void>;
   list(params: {
     page: number;
     pageSize: number;
     status?: PinQueueStatus;
+    search?: string;
   }): Promise<InstagramQueuePageResult>;
 };
 
-function resolvePostMode(listing: NormalizedEtsyListing): InstagramPostMode {
-  const configuredMode = getInstagramPostMode();
+async function resolvePostMode(listing: NormalizedEtsyListing): Promise<InstagramPostMode> {
+  const configuredMode = await getInstagramPostMode();
   const mediaUrls = resolveInstagramMediaUrls(listing, configuredMode);
 
   return configuredMode === "carousel" && mediaUrls.length > 1
@@ -64,7 +66,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
     },
 
     async enqueueListing(listing) {
-      const postMode = resolvePostMode(listing);
+      const postMode = await resolvePostMode(listing);
       const mediaUrls = resolveInstagramMediaUrls(listing, postMode);
       const { error } = await supabase.from("instagram_queue").insert({
         etsy_listing_id: listing.etsyListingId,
@@ -257,7 +259,18 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
     },
 
-    async list({ page, pageSize, status }) {
+    async delete(id) {
+      const { error } = await supabase
+        .from("instagram_queue")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        throw new Error(`Failed to delete Instagram queue item ${id}: ${error.message}`);
+      }
+    },
+
+    async list({ page, pageSize, status, search }) {
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
       let query = supabase
@@ -268,6 +281,11 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
 
       if (status) {
         query = query.eq("status", status);
+      }
+
+      if (search) {
+        const escaped = search.replaceAll("%", "\%").replaceAll("_", "\_");
+        query = query.ilike("title", `%${escaped}%`);
       }
 
       const { data, count, error } = await query;

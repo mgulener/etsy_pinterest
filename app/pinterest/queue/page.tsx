@@ -1,6 +1,8 @@
+import { ConfirmDeleteButton } from "@/app/components/ConfirmDeleteButton";
 import { Pagination } from "@/app/components/Pagination";
 import {
   cancelQueueItemAction,
+  deleteQueueItemAction,
   publishNowAction,
   retryAllFailedAction,
   retryQueueItemAction
@@ -35,6 +37,21 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
   return `Pinterest publish run finished. Selected ${getParam(params, "selected") ?? 0}, published ${getParam(params, "published") ?? 0}, failed ${getParam(params, "failed") ?? 0}, retried ${getParam(params, "retried") ?? 0}, dry run ${getParam(params, "dryRun") ?? "false"}.`;
 }
 
+function buildPageHref(input: { page: number; status?: PinQueueStatus; search: string }) {
+  const params = new URLSearchParams();
+
+  if (input.status) {
+    params.set("status", input.status);
+  }
+
+  if (input.search) {
+    params.set("search", input.search);
+  }
+
+  params.set("page", String(input.page));
+  return `/pinterest/queue?${params.toString()}`;
+}
+
 export default async function QueuePage({ searchParams }: PageProps) {
   await requireAdminSession();
   const params = (await searchParams) ?? {};
@@ -42,11 +59,16 @@ export default async function QueuePage({ searchParams }: PageProps) {
   const status = statuses.includes(rawStatus as PinQueueStatus)
     ? (rawStatus as PinQueueStatus)
     : undefined;
+  const search = getParam(params, "search") ?? "";
   const page = Math.max(Number(getParam(params, "page") ?? "1"), 1);
   const pageSize = 25;
-  const result = await createPinQueueRepository().list({ page, pageSize, status });
+  const result = await createPinQueueRepository().list({
+    page,
+    pageSize,
+    status,
+    search: search.trim() || undefined
+  });
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
-  const statusQuery = status ? `status=${status}&` : "";
   const actionMessage = buildActionMessage(params);
 
   return (
@@ -70,6 +92,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
 
       <div className="toolbar">
         <form>
+          <input name="search" placeholder="Search listing title" defaultValue={search} />
           <select name="status" defaultValue={status ?? ""}>
             <option value="">All statuses</option>
             {statuses.map((option) => (
@@ -78,7 +101,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
               </option>
             ))}
           </select>
-          <button type="submit">Filter</button>
+          <button type="submit">Search</button>
         </form>
       </div>
 
@@ -92,7 +115,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
               <th>Scheduled At</th>
               <th>Last Error</th>
               <th>Created</th>
-              <th>Actions</th>
+              <th className="actions-column">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -100,7 +123,14 @@ export default async function QueuePage({ searchParams }: PageProps) {
               <tr key={item.id}>
                 <td>
                   <div className="listing-cell">
-                    {item.image_url ? <img className="thumb" src={item.image_url} alt="" /> : <div className="thumb" />}
+                    {item.image_url ? (
+                      <span className="thumb-wrap">
+                        <img className="thumb" src={item.image_url} alt="" />
+                        <img className="thumb-preview" src={item.image_url} alt="" />
+                      </span>
+                    ) : (
+                      <div className="thumb" />
+                    )}
                     <div>
                       <a href={item.destination_url ?? undefined} target="_blank" rel="noreferrer">
                         {item.title}
@@ -117,23 +147,30 @@ export default async function QueuePage({ searchParams }: PageProps) {
                 <td className="muted">{item.last_error ?? "-"}</td>
                 <td>{formatDate(item.created_at)}</td>
                 <td>
-                  <div className="inline-form">
+                  <div className="d-flex justify-content-end align-items-center gap-2">
                     {item.status === "failed" ? (
-                      <form action={retryQueueItemAction}>
+                      <form action={retryQueueItemAction} title="Retry">
                         <input type="hidden" name="id" value={item.id} />
-                        <SubmitButton className="ghost-button" pendingText="Retrying...">
-                          Retry
+                        <SubmitButton className="btn btn-warning btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
+                          <span aria-hidden="true">R</span>
+                          <span className="sr-only">Retry</span>
                         </SubmitButton>
                       </form>
                     ) : null}
                     {item.status === "pending" || item.status === "failed" ? (
-                      <form action={cancelQueueItemAction}>
+                      <form action={cancelQueueItemAction} title="Cancel">
                         <input type="hidden" name="id" value={item.id} />
-                        <SubmitButton className="danger-button" pendingText="Cancelling...">
-                          Cancel
+                        <SubmitButton className="btn btn-outline-secondary btn-sm d-inline-flex align-items-center justify-content-center p-2" pendingText="...">
+                          <span aria-hidden="true">C</span>
+                          <span className="sr-only">Cancel</span>
                         </SubmitButton>
                       </form>
                     ) : null}
+                    <ConfirmDeleteButton
+                      id={item.id}
+                      title={item.title}
+                      action={deleteQueueItemAction}
+                    />
                   </div>
                 </td>
               </tr>
@@ -145,7 +182,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
       <Pagination
         currentPage={page}
         totalPages={totalPages}
-        getHref={(targetPage) => `/pinterest/queue?${statusQuery}page=${targetPage}`}
+        getHref={(targetPage) => buildPageHref({ page: targetPage, status, search })}
       />
     </main>
   );

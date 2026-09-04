@@ -1,27 +1,25 @@
+import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
 import { getOptionalNumber } from "@/lib/config/env";
-import type {
-  InstagramMediaUrlInput,
-  InstagramPostMode
-} from "@/lib/instagram/types";
+import type { NormalizedEtsyListing } from "@/lib/etsy/types";
+import type { InstagramPostMode } from "./types";
 
-export function getInstagramPostMode(): InstagramPostMode {
-  return process.env.INSTAGRAM_POST_MODE === "carousel" ? "carousel" : "single";
+export async function getInstagramPostMode(): Promise<InstagramPostMode> {
+  const settings = await getCurrentUserSettings();
+  return settings.instagramPostMode;
 }
 
 export function resolveInstagramMediaUrls(
-  listing: InstagramMediaUrlInput,
-  mode = getInstagramPostMode()
+  listing: NormalizedEtsyListing,
+  postMode: InstagramPostMode
 ) {
-  const urls = listing.imageUrls.length > 0
+  const sourceUrls = listing.imageUrls.length > 0
     ? listing.imageUrls
     : listing.imageUrl
       ? [listing.imageUrl]
       : [];
-
-  if (mode === "single") {
-    return urls.slice(0, 1);
-  }
-
   const maxCarouselItems = getOptionalNumber("INSTAGRAM_CAROUSEL_MAX_ITEMS", 10);
-  return urls.slice(0, maxCarouselItems);
+
+  return postMode === "carousel"
+    ? sourceUrls.slice(0, maxCarouselItems)
+    : sourceUrls.slice(0, 1);
 }

@@ -1,4 +1,4 @@
-import { getOptionalNumber } from "@/lib/config/env";
+import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
 import { createInstagramPost } from "@/lib/instagram/posts";
 import { InstagramApiError } from "@/lib/instagram/types";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
@@ -30,13 +30,6 @@ function shouldRetryError(error: unknown) {
   return error instanceof InstagramApiError ? error.retryable : true;
 }
 
-function getInstagramDryRun() {
-  if (process.env.INSTAGRAM_DRY_RUN) {
-    return process.env.INSTAGRAM_DRY_RUN === "true";
-  }
-
-  return process.env.DRY_RUN === "true";
-}
 
 export async function publishInstagramPostsWithDependencies(input: {
   queueRepository: InstagramPublisherQueueRepository;
@@ -165,12 +158,28 @@ export async function publishInstagramPostsWithDependencies(input: {
 }
 
 export async function publishInstagramPosts() {
+  const settings = await getCurrentUserSettings();
+
+  if (!settings.instagramEnabled) {
+    return {
+      mode: "publish-instagram",
+      selected: 0,
+      claimed: 0,
+      published: 0,
+      skippedDuplicates: 0,
+      failed: 0,
+      retried: 0,
+      dryRun: settings.dryRun,
+      errors: []
+    };
+  }
+
   return publishInstagramPostsWithDependencies({
     queueRepository: createInstagramQueueRepository(),
     postsRepository: createInstagramPostsRepository(),
     instagram: { createPost: createInstagramPost },
-    maxPostsPerRun: getOptionalNumber("MAX_INSTAGRAM_POSTS_PER_RUN", 5),
-    maxRetries: getOptionalNumber("MAX_INSTAGRAM_RETRIES", 3),
-    dryRun: getInstagramDryRun()
+    maxPostsPerRun: settings.maxInstagramPostsPerRun,
+    maxRetries: settings.maxInstagramRetries,
+    dryRun: settings.dryRun
   });
 }

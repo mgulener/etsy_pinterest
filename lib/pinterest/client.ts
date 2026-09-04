@@ -1,13 +1,17 @@
-import { getRequiredEnv } from "@/lib/config/env";
+import {
+  getCurrentUserSettings,
+  requireSetting
+} from "@/lib/repositories/userSettingsRepository";
 import type { CreatePinInput, CreatePinResult } from "./types";
 
 const PINTEREST_API_URL = "https://api.pinterest.com/v5";
 
 export async function pinterestRequest<T>(path: string, init: RequestInit = {}) {
+  const settings = await getCurrentUserSettings();
   const response = await fetch(`${PINTEREST_API_URL}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${getRequiredEnv("PINTEREST_ACCESS_TOKEN")}`,
+      Authorization: `Bearer ${requireSetting(settings.pinterestAccessToken, "Pinterest access token")}`,
       "Content-Type": "application/json",
       ...init.headers
     },

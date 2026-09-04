@@ -416,6 +416,23 @@ test("new listing enters the Instagram queue when enabled", async () => {
   assert.equal(instagramQueueRepository.queued[0]?.etsyListingId, 101);
 });
 
+test("sync can run with Pinterest queue disabled", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const instagramQueueRepository = new MemoryInstagramSyncQueueRepository();
+
+  const result = await syncEtsyListingsWithDependencies({
+    etsy: { getAllActiveListings: async () => [etsyListing(101)] },
+    listingsRepository,
+    instagramQueueRepository,
+    settingsRepository: new MemorySettingsRepository(true)
+  });
+
+  assert.equal(result.created, 1);
+  assert.equal(result.queued, 0);
+  assert.equal(result.instagramQueued, 1);
+  assert.equal(instagramQueueRepository.queued[0]?.etsyListingId, 101);
+});
+
 test("Instagram captions use product-specific hashtags", () => {
   const listing: NormalizedEtsyListing = {
     etsyListingId: 101,
@@ -905,6 +922,39 @@ test("Etsy pagination fetches 1300+ listings", async () => {
     assert.equal(listings.length, total);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("Etsy auth explains missing OAuth token", async () => {
+  const previous = {
+    apiKey: process.env.ETSY_API_KEY,
+    accessToken: process.env.ETSY_ACCESS_TOKEN,
+    refreshToken: process.env.ETSY_REFRESH_TOKEN,
+    shopId: process.env.ETSY_SHOP_ID
+  };
+
+  process.env.ETSY_API_KEY = "etsy-key";
+  delete process.env.ETSY_ACCESS_TOKEN;
+  delete process.env.ETSY_REFRESH_TOKEN;
+  process.env.ETSY_SHOP_ID = "123";
+
+  try {
+    await assert.rejects(
+      getAllActiveListings(),
+      /Missing Etsy OAuth token\. Connect Etsy from Settings\./
+    );
+  } finally {
+    if (previous.apiKey === undefined) delete process.env.ETSY_API_KEY;
+    else process.env.ETSY_API_KEY = previous.apiKey;
+
+    if (previous.accessToken === undefined) delete process.env.ETSY_ACCESS_TOKEN;
+    else process.env.ETSY_ACCESS_TOKEN = previous.accessToken;
+
+    if (previous.refreshToken === undefined) delete process.env.ETSY_REFRESH_TOKEN;
+    else process.env.ETSY_REFRESH_TOKEN = previous.refreshToken;
+
+    if (previous.shopId === undefined) delete process.env.ETSY_SHOP_ID;
+    else process.env.ETSY_SHOP_ID = previous.shopId;
   }
 });
 

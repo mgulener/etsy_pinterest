@@ -33,11 +33,24 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
     return `Etsy sync finished. Fetched ${getParam(params, "fetched") ?? 0}, known ${getParam(params, "known") ?? 0}, Pinterest queued ${getParam(params, "queued") ?? 0}, Instagram queued ${getParam(params, "instagramQueued") ?? 0}, errors ${getParam(params, "errors") ?? 0}.`;
   }
 
+  if (action === "sync-error") {
+    return getParam(params, "message") ?? "Etsy sync failed.";
+  }
+
   if (getParam(params, "etsy") === "connected") {
     return "Etsy connected successfully.";
   }
 
   return null;
+}
+
+function MetricRow({ label, value, tone }: { label: string; value: number; tone?: "success" | "warning" | "danger" }) {
+  return (
+    <div className={`metric-row ${tone ?? ""}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -74,14 +87,15 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   return (
     <main className="page">
-      <div className="page-heading">
+      <div className="page-heading dashboard-hero">
         <div>
+          <p className="eyebrow">Automation Control</p>
           <h1>Pinterest Automation</h1>
-          <p>Etsy catalog sync, queue health, and Pinterest publishing.</p>
+          <p>Etsy catalog sync, Pinterest queue, and Instagram publishing in one place.</p>
         </div>
         <div className="actions">
-          <a className="button ghost-button" href="/api/auth/etsy/start">
-            Connect Etsy
+          <a className="button ghost-button" href="/settings">
+            Settings
           </a>
           <form action={syncNowAction}>
             <SubmitButton pendingText="Syncing Etsy...">Sync Etsy Now</SubmitButton>
@@ -89,13 +103,20 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </div>
       </div>
 
-      {actionMessage ? <section className="status-banner">{actionMessage}</section> : null}
+      {actionMessage ? (
+        <section
+          className={`alert ${getParam(params, "action") === "sync-error" ? "alert-danger" : "alert-success"}`}
+          role="alert"
+        >
+          {actionMessage}
+        </section>
+      ) : null}
 
       {!initialSyncCompleted ? (
         <section className="notice">
           <div>
             <h2>Initial Etsy Sync Required</h2>
-            <p>Bootstrap saves current Etsy listings as known without creating Pinterest queue items.</p>
+            <p>Bootstrap saves current Etsy listings as known without creating queue items.</p>
           </div>
           <form action={bootstrapAction}>
             <SubmitButton pendingText="Bootstrapping...">
@@ -105,35 +126,53 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </section>
       ) : null}
 
-      <section className="stats-grid">
-        <div className="stat-card">
-          <span>Known Etsy Listings</span>
-          <strong>{listingsCount}</strong>
-        </div>
-        <div className="stat-card">
-          <span>Pending Pins</span>
-          <strong>{pendingCount}</strong>
-        </div>
-        <div className="stat-card">
-          <span>Published Pins</span>
-          <strong>{publishedCount}</strong>
-        </div>
-        <div className="stat-card">
-          <span>Failed Pins</span>
-          <strong>{failedCount}</strong>
-        </div>
-        <div className="stat-card">
-          <span>Pending Instagram</span>
-          <strong>{instagramPendingCount}</strong>
-        </div>
-        <div className="stat-card">
-          <span>Published Instagram</span>
-          <strong>{instagramPublishedCount}</strong>
-        </div>
-        <div className="stat-card">
-          <span>Failed Instagram</span>
-          <strong>{instagramFailedCount}</strong>
-        </div>
+      <section className="dashboard-channel-grid" aria-label="Automation summary">
+        <article className="channel-card listings-card">
+          <div className="channel-card-header">
+            <span className="channel-logo etsy-logo" aria-hidden="true">E</span>
+            <div>
+              <span className="channel-label">All Listings</span>
+              <h2>Etsy Catalog</h2>
+            </div>
+          </div>
+          <div className="channel-primary-metric">
+            <strong>{listingsCount}</strong>
+            <span>Total listings</span>
+          </div>
+          <a className="channel-link" href="/etsy/listings">View listings</a>
+        </article>
+
+        <article className="channel-card pinterest-card">
+          <div className="channel-card-header">
+            <span className="channel-logo pinterest-logo" aria-hidden="true">P</span>
+            <div>
+              <span className="channel-label">Pinterest</span>
+              <h2>Pin Queue</h2>
+            </div>
+          </div>
+          <div className="metric-list">
+            <MetricRow label="Pending" value={pendingCount} tone="warning" />
+            <MetricRow label="Published" value={publishedCount} tone="success" />
+            <MetricRow label="Failed" value={failedCount} tone="danger" />
+          </div>
+          <a className="channel-link" href="/pinterest/queue">Open queue</a>
+        </article>
+
+        <article className="channel-card instagram-card">
+          <div className="channel-card-header">
+            <span className="channel-logo instagram-logo" aria-hidden="true">IG</span>
+            <div>
+              <span className="channel-label">Instagram</span>
+              <h2>Post Queue</h2>
+            </div>
+          </div>
+          <div className="metric-list">
+            <MetricRow label="Pending" value={instagramPendingCount} tone="warning" />
+            <MetricRow label="Published" value={instagramPublishedCount} tone="success" />
+            <MetricRow label="Failed" value={instagramFailedCount} tone="danger" />
+          </div>
+          <a className="channel-link" href="/instagram/queue">Open queue</a>
+        </article>
       </section>
     </main>
   );

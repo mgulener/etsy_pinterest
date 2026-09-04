@@ -13,6 +13,44 @@ export type PinQueueStatus =
   | "failed"
   | "cancelled";
 
+
+export type AdminUserRow = {
+  id: string;
+  email: string;
+  password_hash: string;
+  password_salt: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type UserSettingsRow = {
+  user_id: string;
+  etsy_api_key: string | null;
+  etsy_redirect_uri: string | null;
+  etsy_shop_id: string | null;
+  etsy_access_token: string | null;
+  etsy_refresh_token: string | null;
+  etsy_token_expires_at: number | null;
+  etsy_token_scope: string | null;
+  etsy_token_type: string | null;
+  pinterest_enabled: boolean;
+  pinterest_access_token: string | null;
+  pinterest_board_id: string | null;
+  instagram_enabled: boolean;
+  instagram_access_token: string | null;
+  instagram_account_id: string | null;
+  instagram_user_id: string | null;
+  instagram_post_mode: "single" | "carousel";
+  meta_api_version: string | null;
+  dry_run: boolean;
+  max_pins_per_run: number;
+  max_pin_retries: number;
+  max_instagram_posts_per_run: number;
+  max_instagram_retries: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type EtsyListingRow = {
   id: string;
   etsy_listing_id: number;
@@ -94,6 +132,32 @@ export type InstagramPostRow = {
 export type Database = {
   public: {
     Tables: {
+      admin_users: {
+        Row: AdminUserRow;
+        Insert: Omit<AdminUserRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<AdminUserRow, "id" | "created_at">>;
+        Relationships: [];
+      };
+      user_settings: {
+        Row: UserSettingsRow;
+        Insert: { user_id: string } & Partial<Omit<UserSettingsRow, "user_id" | "created_at" | "updated_at">> & {
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<UserSettingsRow, "user_id" | "created_at">>;
+        Relationships: [
+          {
+            foreignKeyName: "user_settings_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "admin_users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       app_settings: {
         Row: {
           key: string;

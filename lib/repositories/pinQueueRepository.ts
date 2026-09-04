@@ -19,10 +19,12 @@ export type PinQueueRepository = {
   retry(id: string): Promise<void>;
   retryAllFailed(): Promise<void>;
   cancel(id: string): Promise<void>;
+  delete(id: string): Promise<void>;
   list(params: {
     page: number;
     pageSize: number;
     status?: PinQueueStatus;
+    search?: string;
   }): Promise<QueuePageResult>;
 };
 
@@ -211,7 +213,18 @@ export function createPinQueueRepository(): PinQueueRepository {
       }
     },
 
-    async list({ page, pageSize, status }) {
+    async delete(id) {
+      const { error } = await supabase
+        .from("pin_queue")
+        .delete()
+        .eq("id", id);
+
+      if (error) {
+        throw new Error(`Failed to delete queue item ${id}: ${error.message}`);
+      }
+    },
+
+    async list({ page, pageSize, status, search }) {
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
       let query = supabase
@@ -222,6 +235,11 @@ export function createPinQueueRepository(): PinQueueRepository {
 
       if (status) {
         query = query.eq("status", status);
+      }
+
+      if (search) {
+        const escaped = search.replaceAll("%", "\%").replaceAll("_", "\_");
+        query = query.ilike("title", `%${escaped}%`);
       }
 
       const { data, count, error } = await query;

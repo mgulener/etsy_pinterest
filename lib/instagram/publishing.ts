@@ -1,4 +1,5 @@
-import { getOptionalNumber, getRequiredEnv } from "@/lib/config/env";
+import { getOptionalNumber } from "@/lib/config/env";
+import { getCurrentUserSettings, requireSetting } from "@/lib/repositories/userSettingsRepository";
 import type {
   CreateInstagramPostResult,
   InstagramContainerStatus,
@@ -27,22 +28,17 @@ type InstagramContainerStatusResponse = {
   status?: string;
 };
 
-function getApiVersion() {
-  return process.env.META_API_VERSION || process.env.INSTAGRAM_API_VERSION || DEFAULT_META_API_VERSION;
-}
+async function getInstagramApiSettings() {
+  const settings = await getCurrentUserSettings();
 
-function getAccessToken() {
-  return getRequiredEnv("INSTAGRAM_ACCESS_TOKEN");
-}
-
-function getInstagramAccountId() {
-  const accountId = process.env.INSTAGRAM_ACCOUNT_ID || process.env.INSTAGRAM_USER_ID;
-
-  if (!accountId) {
-    throw new Error("Missing required environment variable: INSTAGRAM_ACCOUNT_ID or INSTAGRAM_USER_ID");
-  }
-
-  return accountId;
+  return {
+    apiVersion: settings.metaApiVersion || DEFAULT_META_API_VERSION,
+    accessToken: requireSetting(settings.instagramAccessToken, "Instagram access token"),
+    accountId: requireSetting(
+      settings.instagramAccountId || settings.instagramUserId,
+      "Instagram account ID"
+    )
+  };
 }
 
 function classifyInstagramError(
@@ -99,7 +95,8 @@ async function instagramPost<T>(
   params: URLSearchParams,
   operation: "container" | "publish"
 ) {
-  const response = await fetch(`${INSTAGRAM_API_URL}/${getApiVersion()}${path}`, {
+  const settings = await getInstagramApiSettings();
+  const response = await fetch(`${INSTAGRAM_API_URL}/${settings.apiVersion}${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded"
@@ -120,8 +117,9 @@ async function instagramGet<T>(
   params: URLSearchParams,
   operation: "status" | "media"
 ) {
+  const settings = await getInstagramApiSettings();
   const response = await fetch(
-    `${INSTAGRAM_API_URL}/${getApiVersion()}${path}?${params.toString()}`,
+    `${INSTAGRAM_API_URL}/${settings.apiVersion}${path}?${params.toString()}`,
     { cache: "no-store" }
   );
 
@@ -132,17 +130,19 @@ async function instagramGet<T>(
   return (await response.json()) as T;
 }
 
-function buildTokenParams(extra?: Record<string, string>) {
+async function buildTokenParams(extra?: Record<string, string>) {
+  const settings = await getInstagramApiSettings();
+
   return new URLSearchParams({
-    access_token: getAccessToken(),
+    access_token: settings.accessToken,
     ...extra
   });
 }
 
 export async function createImageContainer(input: PublishInstagramImageInput) {
   return instagramPost<InstagramContainerResponse>(
-    `/${getInstagramAccountId()}/media`,
-    buildTokenParams({
+    `/${(await getInstagramApiSettings()).accountId}/media`,
+    await buildTokenParams({
       image_url: input.imageUrl,
       caption: input.caption.slice(0, 2200)
     }),
@@ -152,8 +152,8 @@ export async function createImageContainer(input: PublishInstagramImageInput) {
 
 export async function createCarouselItem(imageUrl: string) {
   return instagramPost<InstagramContainerResponse>(
-    `/${getInstagramAccountId()}/media`,
-    buildTokenParams({
+    `/${(await getInstagramApiSettings()).accountId}/media`,
+    await buildTokenParams({
       image_url: imageUrl,
       is_carousel_item: "true"
     }),
@@ -166,8 +166,8 @@ export async function createCarouselContainer(input: {
   caption: string;
 }) {
   return instagramPost<InstagramContainerResponse>(
-    `/${getInstagramAccountId()}/media`,
-    buildTokenParams({
+    `/${(await getInstagramApiSettings()).accountId}/media`,
+    await buildTokenParams({
       media_type: "CAROUSEL",
       children: input.creationIds.join(","),
       caption: input.caption.slice(0, 2200)
@@ -179,7 +179,7 @@ export async function createCarouselContainer(input: {
 export async function getContainerStatus(creationId: string) {
   return instagramGet<InstagramContainerStatusResponse>(
     `/${creationId}`,
-    buildTokenParams({ fields: "status_code,status" }),
+    await buildTokenParams({ fields: "status_code,status" }),
     "status"
   );
 }
@@ -219,8 +219,8 @@ export async function waitForContainer(creationId: string) {
 
 export async function publishMedia(creationId: string) {
   return instagramPost<InstagramPublishResponse>(
-    `/${getInstagramAccountId()}/media_publish`,
-    buildTokenParams({ creation_id: creationId }),
+    `/${(await getInstagramApiSettings()).accountId}/media_publish`,
+    await buildTokenParams({ creation_id: creationId }),
     "publish"
   );
 }
@@ -228,7 +228,7 @@ export async function publishMedia(creationId: string) {
 export async function getMedia(mediaId: string) {
   return instagramGet<InstagramMediaResponse>(
     `/${mediaId}`,
-    buildTokenParams({ fields: "permalink" }),
+    await buildTokenParams({ fields: "permalink" }),
     "media"
   );
 }

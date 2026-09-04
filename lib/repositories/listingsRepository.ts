@@ -2,12 +2,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import type { EtsyListingRow } from "@/lib/supabase/types";
 
-export type ListingWithPinterestStatus = EtsyListingRow & {
+export type ListingWithSocialStatus = EtsyListingRow & {
   pinterest_status: "queued" | "published" | "none";
+  instagram_status: "queued" | "published" | "none";
 };
 
 export type ListingsPageResult = {
-  rows: ListingWithPinterestStatus[];
+  rows: ListingWithSocialStatus[];
   total: number;
 };
 
@@ -151,7 +152,7 @@ export function createListingsRepository(): ListingsRepository {
         .range(from, to);
 
       if (search) {
-        const escaped = search.replaceAll("%", "\\%").replaceAll("_", "\\_");
+        const escaped = search.replaceAll("%", "\%").replaceAll("_", "\_");
         const numericSearch = Number(search);
         query = Number.isFinite(numericSearch)
           ? query.or(`title.ilike.%${escaped}%,etsy_listing_id.eq.${numericSearch}`)
@@ -165,40 +166,54 @@ export function createListingsRepository(): ListingsRepository {
       }
 
       const listingIds = (data ?? []).map((row) => row.etsy_listing_id);
-      const queueStatuses = new Set<number>();
-      const publishedStatuses = new Set<number>();
+      const pinterestQueued = new Set<number>();
+      const pinterestPublished = new Set<number>();
+      const instagramQueued = new Set<number>();
+      const instagramPublished = new Set<number>();
 
       if (listingIds.length > 0) {
-        const { data: queueData, error: queueError } = await supabase
-          .from("pin_queue")
-          .select("etsy_listing_id")
-          .in("etsy_listing_id", listingIds);
+        const [pinQueueResult, pinterestPostsResult, instagramQueueResult, instagramPostsResult] =
+          await Promise.all([
+            supabase.from("pin_queue").select("etsy_listing_id").in("etsy_listing_id", listingIds),
+            supabase.from("pinterest_posts").select("etsy_listing_id").in("etsy_listing_id", listingIds),
+            supabase.from("instagram_queue").select("etsy_listing_id").in("etsy_listing_id", listingIds),
+            supabase.from("instagram_posts").select("etsy_listing_id").in("etsy_listing_id", listingIds)
+          ]);
 
-        if (queueError) {
-          throw new Error(`Failed to read queue statuses: ${queueError.message}`);
+        if (pinQueueResult.error) {
+          throw new Error(`Failed to read Pinterest queue statuses: ${pinQueueResult.error.message}`);
         }
 
-        queueData?.forEach((row) => queueStatuses.add(row.etsy_listing_id));
-
-        const { data: postData, error: postError } = await supabase
-          .from("pinterest_posts")
-          .select("etsy_listing_id")
-          .in("etsy_listing_id", listingIds);
-
-        if (postError) {
-          throw new Error(`Failed to read Pinterest statuses: ${postError.message}`);
+        if (pinterestPostsResult.error) {
+          throw new Error(`Failed to read Pinterest statuses: ${pinterestPostsResult.error.message}`);
         }
 
-        postData?.forEach((row) => publishedStatuses.add(row.etsy_listing_id));
+        if (instagramQueueResult.error) {
+          throw new Error(`Failed to read Instagram queue statuses: ${instagramQueueResult.error.message}`);
+        }
+
+        if (instagramPostsResult.error) {
+          throw new Error(`Failed to read Instagram statuses: ${instagramPostsResult.error.message}`);
+        }
+
+        pinQueueResult.data?.forEach((row) => pinterestQueued.add(row.etsy_listing_id));
+        pinterestPostsResult.data?.forEach((row) => pinterestPublished.add(row.etsy_listing_id));
+        instagramQueueResult.data?.forEach((row) => instagramQueued.add(row.etsy_listing_id));
+        instagramPostsResult.data?.forEach((row) => instagramPublished.add(row.etsy_listing_id));
       }
 
       return {
         total: count ?? 0,
         rows: (data ?? []).map((row) => ({
           ...row,
-          pinterest_status: publishedStatuses.has(row.etsy_listing_id)
+          pinterest_status: pinterestPublished.has(row.etsy_listing_id)
             ? "published"
-            : queueStatuses.has(row.etsy_listing_id)
+            : pinterestQueued.has(row.etsy_listing_id)
+              ? "queued"
+              : "none",
+          instagram_status: instagramPublished.has(row.etsy_listing_id)
+            ? "published"
+            : instagramQueued.has(row.etsy_listing_id)
               ? "queued"
               : "none"
         }))

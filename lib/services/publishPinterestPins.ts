@@ -1,4 +1,4 @@
-import { getOptionalNumber } from "@/lib/config/env";
+import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
 import { createPin } from "@/lib/pinterest/pins";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
@@ -147,12 +147,28 @@ export async function publishPinterestPinsWithDependencies(input: {
 }
 
 export async function publishPinterestPins() {
+  const settings = await getCurrentUserSettings();
+
+  if (!settings.pinterestEnabled) {
+    return {
+      mode: "publish",
+      selected: 0,
+      claimed: 0,
+      published: 0,
+      skippedDuplicates: 0,
+      failed: 0,
+      retried: 0,
+      dryRun: settings.dryRun,
+      errors: []
+    };
+  }
+
   return publishPinterestPinsWithDependencies({
     queueRepository: createPinQueueRepository(),
     postsRepository: createPinterestPostsRepository(),
     pinterest: { createPin },
-    maxPinsPerRun: getOptionalNumber("MAX_PINS_PER_RUN", 10),
-    maxRetries: getOptionalNumber("MAX_PIN_RETRIES", 3),
-    dryRun: process.env.DRY_RUN === "true"
+    maxPinsPerRun: settings.maxPinsPerRun,
+    maxRetries: settings.maxPinRetries,
+    dryRun: settings.dryRun
   });
 }

@@ -81,7 +81,10 @@ export default async function InstagramPostsPage({ searchParams }: PageProps) {
                   <td>
                     <div className="listing-cell">
                       {listing?.imageUrl ? (
-                        <img className="thumb" src={listing.imageUrl} alt="" />
+                        <span className="thumb-wrap">
+                          <img className="thumb" src={listing.imageUrl} alt="" />
+                          <img className="thumb-preview" src={listing.imageUrl} alt="" />
+                        </span>
                       ) : (
                         <div className="thumb" />
                       )}

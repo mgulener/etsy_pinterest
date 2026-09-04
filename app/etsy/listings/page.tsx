@@ -1,4 +1,9 @@
+import {
+  queueInstagramListingAction,
+  queuePinterestListingAction
+} from "@/app/actions/admin";
 import { Pagination } from "@/app/components/Pagination";
+import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 
@@ -11,10 +16,6 @@ type PageProps = {
 function getParam(params: Record<string, string | string[] | undefined>, key: string) {
   const value = params[key];
   return Array.isArray(value) ? value[0] : value;
-}
-
-function formatDate(value: string | null) {
-  return value ? new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-";
 }
 
 export default async function ListingsPage({ searchParams }: PageProps) {
@@ -47,14 +48,14 @@ export default async function ListingsPage({ searchParams }: PageProps) {
       </div>
 
       <div className="table-shell">
-        <table className="table table-hover align-middle mb-0">
+        <table className="table table-hover align-middle mb-0 listings-table">
           <thead>
             <tr>
               <th>Listing</th>
               <th>State</th>
-              <th>First Seen</th>
-              <th>Last Seen</th>
-              <th>Pinterest Status</th>
+              <th>Pinterest</th>
+              <th>Instagram</th>
+              <th className="actions-column">Publish</th>
             </tr>
           </thead>
           <tbody>
@@ -63,7 +64,10 @@ export default async function ListingsPage({ searchParams }: PageProps) {
                 <td>
                   <div className="listing-cell">
                     {listing.image_url ? (
-                      <img className="thumb" src={listing.image_url} alt="" />
+                      <span className="thumb-wrap">
+                        <img className="thumb" src={listing.image_url} alt="" />
+                        <img className="thumb-preview" src={listing.image_url} alt="" />
+                      </span>
                     ) : (
                       <div className="thumb" />
                     )}
@@ -76,12 +80,39 @@ export default async function ListingsPage({ searchParams }: PageProps) {
                   </div>
                 </td>
                 <td>{listing.state}</td>
-                <td>{formatDate(listing.first_seen_at)}</td>
-                <td>{formatDate(listing.last_seen_at)}</td>
                 <td>
                   <span className={`badge ${listing.pinterest_status}`}>
                     {listing.pinterest_status}
                   </span>
+                </td>
+                <td>
+                  <span className={`badge ${listing.instagram_status}`}>
+                    {listing.instagram_status}
+                  </span>
+                </td>
+                <td>
+                  <div className="platform-actions" aria-label={`Publish actions for ${listing.title}`}>
+                    <form action={queuePinterestListingAction} title="Add to Pinterest queue">
+                      <input type="hidden" name="etsyListingId" value={listing.etsy_listing_id} />
+                      <SubmitButton
+                        className="icon-button pinterest-action"
+                        pendingText="..."
+                      >
+                        <span aria-hidden="true">P</span>
+                        <span className="sr-only">Add to Pinterest queue</span>
+                      </SubmitButton>
+                    </form>
+                    <form action={queueInstagramListingAction} title="Add to Instagram queue">
+                      <input type="hidden" name="etsyListingId" value={listing.etsy_listing_id} />
+                      <SubmitButton
+                        className="icon-button instagram-action"
+                        pendingText="..."
+                      >
+                        <span aria-hidden="true">IG</span>
+                        <span className="sr-only">Add to Instagram queue</span>
+                      </SubmitButton>
+                    </form>
+                  </div>
                 </td>
               </tr>
             ))}

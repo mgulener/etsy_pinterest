@@ -10,10 +10,59 @@ import { syncEtsyListings } from "@/lib/services/syncEtsyListings";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { getCurrentUserSettings, requireSetting } from "@/lib/repositories/userSettingsRepository";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { buildInstagramCaption } from "@/lib/instagram/caption";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import type { InstagramPostMode } from "@/lib/instagram/types";
+
+
+function normalizeListingRow(listing: {
+  etsy_listing_id: number;
+  etsy_image_id: number | null;
+  image_url: string | null;
+  title: string;
+  description: string | null;
+  url: string | null;
+  state: string;
+  original_creation_timestamp: number | null;
+}): NormalizedEtsyListing {
+  return {
+    etsyListingId: listing.etsy_listing_id,
+    etsyImageId: listing.etsy_image_id,
+    imageUrl: listing.image_url,
+    imageUrls: listing.image_url ? [listing.image_url] : [],
+    title: listing.title,
+    description: listing.description,
+    destinationUrl: listing.url,
+    state: listing.state,
+    originalCreationTimestamp: listing.original_creation_timestamp
+  };
+}
+
+function toActionErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown action error";
+}
+
+async function getListingForManualQueue(formData: FormData): Promise<NormalizedEtsyListing | null> {
+  const rawId = Number(formData.get("etsyListingId") ?? "");
+
+  if (!Number.isFinite(rawId)) {
+    return null;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("etsy_listings")
+    .select("*")
+    .eq("etsy_listing_id", rawId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to find Etsy listing ${rawId}: ${error.message}`);
+  }
+
+  return data ? normalizeListingRow(data) : null;
+}
 
 export async function bootstrapAction() {
   await requireAdminSession();
@@ -26,11 +75,18 @@ export async function bootstrapAction() {
 
 export async function syncNowAction() {
   await requireAdminSession();
-  const result = await syncEtsyListings();
-  revalidatePath("/");
-  redirect(
-    `/dashboard?action=sync&fetched=${result.fetched}&known=${result.known}&queued=${result.queued}&instagramQueued=${result.instagramQueued}&errors=${result.errors.length}`
-  );
+
+  let destination: string;
+
+  try {
+    const result = await syncEtsyListings();
+    revalidatePath("/");
+    destination = `/dashboard?action=sync&fetched=${result.fetched}&known=${result.known}&queued=${result.queued}&instagramQueued=${result.instagramQueued}&errors=${result.errors.length}`;
+  } catch (error) {
+    destination = `/dashboard?action=sync-error&message=${encodeURIComponent(toActionErrorMessage(error))}`;
+  }
+
+  redirect(destination);
 }
 
 export async function publishNowAction() {
@@ -49,6 +105,42 @@ export async function publishInstagramNowAction() {
   redirect(
     `/instagram/queue?action=publish-instagram&selected=${result.selected}&published=${result.published}&failed=${result.failed}&retried=${result.retried}&dryRun=${result.dryRun}`
   );
+}
+
+
+export async function queuePinterestListingAction(formData: FormData) {
+  await requireAdminSession();
+  const listing = await getListingForManualQueue(formData);
+
+  if (listing) {
+    const settings = await getCurrentUserSettings();
+
+    if (settings.pinterestEnabled) {
+      await createPinQueueRepository().enqueueListing(
+        listing,
+        requireSetting(settings.pinterestBoardId, "Pinterest board ID")
+      );
+    }
+  }
+
+  revalidatePath("/etsy/listings");
+  revalidatePath("/pinterest/queue");
+}
+
+export async function queueInstagramListingAction(formData: FormData) {
+  await requireAdminSession();
+  const listing = await getListingForManualQueue(formData);
+
+  if (listing) {
+    const settings = await getCurrentUserSettings();
+
+    if (settings.instagramEnabled) {
+      await createInstagramQueueRepository().enqueueListing(listing);
+    }
+  }
+
+  revalidatePath("/etsy/listings");
+  revalidatePath("/instagram/queue");
 }
 
 export async function retryQueueItemAction(formData: FormData) {
@@ -171,6 +263,17 @@ export async function queueInstagramPostAgainAction(formData: FormData) {
   redirect("/instagram/queue");
 }
 
+export async function deleteInstagramQueueItemAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+
+  if (id) {
+    await createInstagramQueueRepository().delete(id);
+  }
+
+  revalidatePath("/instagram/queue");
+}
+
 export async function retryAllFailedInstagramAction() {
   await requireAdminSession();
   await createInstagramQueueRepository().retryAllFailed();
@@ -186,6 +289,17 @@ export async function cancelInstagramQueueItemAction(formData: FormData) {
   }
 
   revalidatePath("/instagram/queue");
+}
+
+export async function deleteQueueItemAction(formData: FormData) {
+  await requireAdminSession();
+  const id = String(formData.get("id") ?? "");
+
+  if (id) {
+    await createPinQueueRepository().delete(id);
+  }
+
+  revalidatePath("/pinterest/queue");
 }
 
 export async function retryAllFailedAction() {

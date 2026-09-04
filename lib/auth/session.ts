@@ -5,6 +5,12 @@ import { getRequiredEnv } from "@/lib/config/env";
 const ADMIN_COOKIE = "etsy_pinterest_admin";
 const SESSION_TTL_SECONDS = 60 * 60 * 8;
 
+export type AuthSession = {
+  userId: string;
+  email: string;
+  expiresAt: number;
+};
+
 function base64UrlEncode(input: ArrayBuffer | string) {
   const bytes =
     typeof input === "string"
@@ -28,10 +34,14 @@ function base64UrlDecode(input: string) {
   return Buffer.from(padded, "base64").toString("utf8");
 }
 
+function getSessionSecret() {
+  return process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || getRequiredEnv("CRON_SECRET");
+}
+
 async function sign(payload: string) {
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(getRequiredEnv("ADMIN_PASSWORD")),
+    new TextEncoder().encode(getSessionSecret()),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
@@ -45,16 +55,16 @@ async function sign(payload: string) {
   return base64UrlEncode(signature);
 }
 
-async function createSessionToken() {
+async function createSessionToken(user: { id: string; email: string }) {
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
-  const payload = base64UrlEncode(JSON.stringify({ expiresAt }));
+  const payload = base64UrlEncode(JSON.stringify({ userId: user.id, email: user.email, expiresAt }));
   const signature = await sign(payload);
 
   return `${payload}.${signature}`;
 }
 
-export async function createAdminSession() {
-  const token = await createSessionToken();
+export async function createAdminSession(user: { id: string; email: string }) {
+  const token = await createSessionToken(user);
   const cookieStore = await cookies();
 
   cookieStore.set(ADMIN_COOKIE, token, {
@@ -71,38 +81,66 @@ export async function clearAdminSession() {
   cookieStore.delete(ADMIN_COOKIE);
 }
 
-export async function isAdminSessionValid() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_COOKIE)?.value;
+export async function getCurrentSession(): Promise<AuthSession | null> {
+  let token: string | undefined;
+
+  try {
+    const cookieStore = await cookies();
+    token = cookieStore.get(ADMIN_COOKIE)?.value;
+  } catch {
+    return null;
+  }
 
   if (!token) {
-    return false;
+    return null;
   }
 
   const [payload, signature] = token.split(".");
 
   if (!payload || !signature) {
-    return false;
+    return null;
   }
 
   const expectedSignature = await sign(payload);
 
   if (signature !== expectedSignature) {
-    return false;
+    return null;
   }
 
   try {
-    const parsed = JSON.parse(base64UrlDecode(payload)) as { expiresAt?: number };
-    return typeof parsed.expiresAt === "number" && parsed.expiresAt > Date.now() / 1000;
+    const parsed = JSON.parse(base64UrlDecode(payload)) as Partial<AuthSession>;
+    const valid =
+      typeof parsed.userId === "string" &&
+      typeof parsed.email === "string" &&
+      typeof parsed.expiresAt === "number" &&
+      parsed.expiresAt > Date.now() / 1000;
+
+    if (!valid) {
+      return null;
+    }
+
+    return {
+      userId: parsed.userId as string,
+      email: parsed.email as string,
+      expiresAt: parsed.expiresAt as number
+    };
   } catch {
-    return false;
+    return null;
   }
 }
 
+export async function isAdminSessionValid() {
+  return Boolean(await getCurrentSession());
+}
+
 export async function requireAdminSession() {
-  if (!(await isAdminSessionValid())) {
+  const session = await getCurrentSession();
+
+  if (!session) {
     redirect("/login");
   }
+
+  return session;
 }
 
 export async function requireAdminRequest() {
