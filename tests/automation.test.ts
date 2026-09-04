@@ -195,7 +195,12 @@ class MemoryPublisherQueueRepository implements PublisherQueueRepository {
   }
 
   async listPending(limit: number) {
-    return this.items.filter((item) => item.status === "pending").slice(0, limit);
+    const now = Date.now();
+
+    return this.items
+      .filter((item) => item.status === "pending" && new Date(item.scheduled_at).getTime() <= now)
+      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+      .slice(0, limit);
   }
 
   async claimPending(id: string) {
@@ -208,6 +213,7 @@ class MemoryPublisherQueueRepository implements PublisherQueueRepository {
     item.status = "processing";
     return item;
   }
+
 
   async markPublished(id: string) {
     const item = this.items.find((candidate) => candidate.id === id);
@@ -256,7 +262,12 @@ class MemoryInstagramPublisherQueueRepository implements InstagramPublisherQueue
   }
 
   async listPending(limit: number) {
-    return this.items.filter((item) => item.status === "pending").slice(0, limit);
+    const now = Date.now();
+
+    return this.items
+      .filter((item) => item.status === "pending" && new Date(item.scheduled_at).getTime() <= now)
+      .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+      .slice(0, limit);
   }
 
   async claimPending(id: string) {
@@ -268,6 +279,26 @@ class MemoryInstagramPublisherQueueRepository implements InstagramPublisherQueue
 
     item.status = "processing";
     return item;
+  }
+
+  async recoverStaleProcessing(staleBefore: string, retryScheduledAt: string) {
+    let recovered = 0;
+
+    for (const item of this.items) {
+      if (
+        item.status === "processing" &&
+        item.processing_started_at &&
+        new Date(item.processing_started_at).getTime() < new Date(staleBefore).getTime()
+      ) {
+        item.status = "pending";
+        item.last_error = "Recovered stale processing item. It will retry in the next publish slot.";
+        item.processing_started_at = null;
+        item.scheduled_at = retryScheduledAt;
+        recovered += 1;
+      }
+    }
+
+    return recovered;
   }
 
   async markPublished(id: string) {
@@ -458,8 +489,7 @@ test("canonical route architecture has no legacy app routes", () => {
     vercelConfig.crons.map((cron) => cron.path),
     [
       "/api/cron/etsy/sync",
-      "/api/cron/pinterest/publish",
-      "/api/cron/instagram/publish"
+      "/api/cron/pinterest/publish"
     ]
   );
 });
@@ -804,6 +834,43 @@ test("Pinterest API success creates a pinterest post", async () => {
   assert.equal(result.published, 1);
   assert.equal(postsRepository.posts.has(101), true);
   assert.equal(queueRepository.items[0]?.status, "published");
+});
+
+test("stale Instagram processing item is recovered before publishing", async () => {
+  const staleProcessingAt = new Date(Date.now() - 20 * 60_000).toISOString();
+  const queueRepository = new MemoryInstagramPublisherQueueRepository([
+    makeInstagramQueueItem({
+      id: "igq1",
+      etsy_listing_id: 101,
+      status: "processing",
+      processing_started_at: staleProcessingAt,
+      scheduled_at: new Date(Date.now() - 30 * 60_000).toISOString()
+    })
+  ]);
+  const postsRepository = new MemoryInstagramPostsRepository();
+  let publishCount = 0;
+
+  const result = await publishInstagramPostsWithDependencies({
+    queueRepository,
+    postsRepository,
+    instagram: {
+      createPost: async () => {
+        publishCount += 1;
+        return { id: "ig-101", mediaType: "IMAGE" };
+      }
+    },
+    maxPostsPerRun: 1,
+    maxRetries: 3,
+    dryRun: false
+  });
+
+  assert.equal(result.recovered, 1);
+  assert.equal(result.selected, 0);
+  assert.equal(result.published, 0);
+  assert.equal(publishCount, 0);
+  assert.equal(queueRepository.items[0]?.status, "pending");
+  assert.equal(queueRepository.items[0]?.processing_started_at, null);
+  assert.equal(new Date(queueRepository.items[0]?.scheduled_at ?? 0).getTime() > Date.now(), true);
 });
 
 test("Instagram API failure does not create an instagram post", async () => {

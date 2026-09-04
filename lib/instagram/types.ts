@@ -7,6 +7,7 @@ export type CreateInstagramPostInput = {
   imageUrls?: string[];
   caption: string;
   mode?: InstagramPostMode;
+  userId?: string | null;
 };
 
 export type CreateInstagramPostResult = {
@@ -44,11 +45,13 @@ export class InstagramApiError extends Error {
 export type PublishInstagramImageInput = {
   imageUrl: string;
   caption: string;
+  userId?: string | null;
 };
 
 export type PublishInstagramCarouselInput = {
   imageUrls: string[];
   caption: string;
+  userId?: string | null;
 };
 
 export type InstagramMediaUrlInput = Pick<

@@ -1,4 +1,4 @@
-import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
+import { getCurrentUserSettings, getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
 import { createInstagramPost } from "@/lib/instagram/posts";
 import { InstagramApiError } from "@/lib/instagram/types";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
@@ -18,6 +18,7 @@ export type PublishInstagramPostsResult = {
   claimed: number;
   published: number;
   skippedDuplicates: number;
+  recovered: number;
   failed: number;
   retried: number;
   dryRun: boolean;
@@ -32,6 +33,7 @@ function shouldRetryError(error: unknown) {
   return error instanceof InstagramApiError ? error.retryable : true;
 }
 
+const STALE_PROCESSING_MS = 10 * 60_000;
 
 export async function publishInstagramPostsWithDependencies(input: {
   queueRepository: InstagramPublisherQueueRepository;
@@ -42,7 +44,19 @@ export async function publishInstagramPostsWithDependencies(input: {
   dryRun: boolean;
   onProgress?: (progress: SyncJobProgressInput) => Promise<void> | void;
 }): Promise<PublishInstagramPostsResult> {
-  await input.onProgress?.({ current: 10, total: 100, message: "Reading pending Instagram queue" });
+  await input.onProgress?.({ current: 10, total: 100, message: "Recovering stale Instagram publish items" });
+  const recovered = await input.queueRepository.recoverStaleProcessing(
+    new Date(Date.now() - STALE_PROCESSING_MS).toISOString(),
+    buildScheduledAt(1)
+  );
+
+  await input.onProgress?.({
+    current: 20,
+    total: 100,
+    message: recovered > 0
+      ? `Recovered ${recovered} stale Instagram items. Reading pending queue.`
+      : "Reading pending Instagram queue"
+  });
   const pendingItems = await input.queueRepository.listPending(input.maxPostsPerRun);
   const progressTotal = Math.max(pendingItems.length, 1);
   let claimed = 0;
@@ -183,6 +197,7 @@ export async function publishInstagramPostsWithDependencies(input: {
     claimed,
     published,
     skippedDuplicates,
+    recovered,
     failed,
     retried,
     dryRun: input.dryRun,
@@ -190,8 +205,11 @@ export async function publishInstagramPostsWithDependencies(input: {
   };
 }
 
-export async function publishInstagramPosts(onProgress?: (progress: SyncJobProgressInput) => Promise<void> | void) {
-  const settings = await getCurrentUserSettings();
+export async function publishInstagramPosts(
+  onProgress?: (progress: SyncJobProgressInput) => Promise<void> | void,
+  userId?: string | null
+) {
+  const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
 
   await onProgress?.({ current: 15, total: 100, message: "Checking Instagram settings" });
 
@@ -202,6 +220,7 @@ export async function publishInstagramPosts(onProgress?: (progress: SyncJobProgr
       claimed: 0,
       published: 0,
       skippedDuplicates: 0,
+      recovered: 0,
       failed: 0,
       retried: 0,
       dryRun: settings.dryRun,
@@ -212,7 +231,12 @@ export async function publishInstagramPosts(onProgress?: (progress: SyncJobProgr
   return publishInstagramPostsWithDependencies({
     queueRepository: createInstagramQueueRepository(),
     postsRepository: createInstagramPostsRepository(),
-    instagram: { createPost: createInstagramPost },
+    instagram: {
+      createPost: (postInput) => createInstagramPost({
+        ...postInput,
+        userId: settings.userId ?? userId
+      })
+    },
     maxPostsPerRun: settings.maxInstagramPostsPerRun,
     maxRetries: settings.maxInstagramRetries,
     dryRun: settings.dryRun,

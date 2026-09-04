@@ -1,5 +1,5 @@
 import { getOptionalNumber } from "@/lib/config/env";
-import { getCurrentUserSettings, requireSetting } from "@/lib/repositories/userSettingsRepository";
+import { getCurrentUserSettings, getSettingsForUser, requireSetting } from "@/lib/repositories/userSettingsRepository";
 import type {
   CreateInstagramPostResult,
   InstagramContainerStatus,
@@ -10,6 +10,7 @@ import { InstagramApiError } from "./types";
 
 const INSTAGRAM_API_URL = "https://graph.instagram.com";
 const DEFAULT_META_API_VERSION = "v25.0";
+const DEFAULT_INSTAGRAM_FETCH_TIMEOUT_MS = 60_000;
 
 type InstagramContainerResponse = {
   id: string;
@@ -28,8 +29,8 @@ type InstagramContainerStatusResponse = {
   status?: string;
 };
 
-async function getInstagramApiSettings() {
-  const settings = await getCurrentUserSettings();
+async function getInstagramApiSettings(userId?: string | null) {
+  const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
 
   return {
     apiVersion: settings.metaApiVersion || DEFAULT_META_API_VERSION,
@@ -39,6 +40,21 @@ async function getInstagramApiSettings() {
       "Instagram account ID"
     )
   };
+}
+
+function createTimeoutSignal() {
+  const timeoutMs = getOptionalNumber(
+    "INSTAGRAM_FETCH_TIMEOUT_MS",
+    DEFAULT_INSTAGRAM_FETCH_TIMEOUT_MS
+  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  return { signal: controller.signal, cleanup: () => clearTimeout(timeout) };
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 function classifyInstagramError(
@@ -93,45 +109,80 @@ function classifyInstagramError(
 async function instagramPost<T>(
   path: string,
   params: URLSearchParams,
-  operation: "container" | "publish"
+  operation: "container" | "publish",
+  userId?: string | null
 ) {
-  const settings = await getInstagramApiSettings();
-  const response = await fetch(`${INSTAGRAM_API_URL}/${settings.apiVersion}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: params.toString(),
-    cache: "no-store"
-  });
+  const settings = await getInstagramApiSettings(userId);
+  const { signal, cleanup } = createTimeoutSignal();
 
-  if (!response.ok) {
-    throw classifyInstagramError(response.status, await response.text(), operation);
+  try {
+    const response = await fetch(`${INSTAGRAM_API_URL}/${settings.apiVersion}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: params.toString(),
+      cache: "no-store",
+      signal
+    });
+
+    if (!response.ok) {
+      throw classifyInstagramError(response.status, await response.text(), operation);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new InstagramApiError(
+        `Instagram API request timed out while calling ${operation}`,
+        "temporary_error",
+        true
+      );
+    }
+
+    throw error;
+  } finally {
+    cleanup();
   }
-
-  return (await response.json()) as T;
 }
 
 async function instagramGet<T>(
   path: string,
   params: URLSearchParams,
-  operation: "status" | "media"
+  operation: "status" | "media",
+  userId?: string | null
 ) {
-  const settings = await getInstagramApiSettings();
-  const response = await fetch(
-    `${INSTAGRAM_API_URL}/${settings.apiVersion}${path}?${params.toString()}`,
-    { cache: "no-store" }
-  );
+  const settings = await getInstagramApiSettings(userId);
+  const { signal, cleanup } = createTimeoutSignal();
 
-  if (!response.ok) {
-    throw classifyInstagramError(response.status, await response.text(), operation);
+  try {
+    const response = await fetch(
+      `${INSTAGRAM_API_URL}/${settings.apiVersion}${path}?${params.toString()}`,
+      { cache: "no-store", signal }
+    );
+
+    if (!response.ok) {
+      throw classifyInstagramError(response.status, await response.text(), operation);
+    }
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new InstagramApiError(
+        `Instagram API request timed out while calling ${operation}`,
+        "temporary_error",
+        true
+      );
+    }
+
+    throw error;
+  } finally {
+    cleanup();
   }
-
-  return (await response.json()) as T;
 }
 
-async function buildTokenParams(extra?: Record<string, string>) {
-  const settings = await getInstagramApiSettings();
+async function buildTokenParams(extra?: Record<string, string>, userId?: string | null) {
+  const settings = await getInstagramApiSettings(userId);
 
   return new URLSearchParams({
     access_token: settings.accessToken,
@@ -141,55 +192,60 @@ async function buildTokenParams(extra?: Record<string, string>) {
 
 export async function createImageContainer(input: PublishInstagramImageInput) {
   return instagramPost<InstagramContainerResponse>(
-    `/${(await getInstagramApiSettings()).accountId}/media`,
+    `/${(await getInstagramApiSettings(input.userId)).accountId}/media`,
     await buildTokenParams({
       image_url: input.imageUrl,
       caption: input.caption.slice(0, 2200)
-    }),
-    "container"
+    }, input.userId),
+    "container",
+    input.userId
   );
 }
 
-export async function createCarouselItem(imageUrl: string) {
+export async function createCarouselItem(imageUrl: string, userId?: string | null) {
   return instagramPost<InstagramContainerResponse>(
-    `/${(await getInstagramApiSettings()).accountId}/media`,
+    `/${(await getInstagramApiSettings(userId)).accountId}/media`,
     await buildTokenParams({
       image_url: imageUrl,
       is_carousel_item: "true"
-    }),
-    "container"
+    }, userId),
+    "container",
+    userId
   );
 }
 
 export async function createCarouselContainer(input: {
   creationIds: string[];
   caption: string;
+  userId?: string | null;
 }) {
   return instagramPost<InstagramContainerResponse>(
-    `/${(await getInstagramApiSettings()).accountId}/media`,
+    `/${(await getInstagramApiSettings(input.userId)).accountId}/media`,
     await buildTokenParams({
       media_type: "CAROUSEL",
       children: input.creationIds.join(","),
       caption: input.caption.slice(0, 2200)
-    }),
-    "container"
+    }, input.userId),
+    "container",
+    input.userId
   );
 }
 
-export async function getContainerStatus(creationId: string) {
+export async function getContainerStatus(creationId: string, userId?: string | null) {
   return instagramGet<InstagramContainerStatusResponse>(
     `/${creationId}`,
-    await buildTokenParams({ fields: "status_code,status" }),
-    "status"
+    await buildTokenParams({ fields: "status_code,status" }, userId),
+    "status",
+    userId
   );
 }
 
-export async function waitForContainer(creationId: string) {
+export async function waitForContainer(creationId: string, userId?: string | null) {
   const maxPolls = getOptionalNumber("INSTAGRAM_CONTAINER_MAX_POLLS", 6);
   const pollIntervalMs = getOptionalNumber("INSTAGRAM_CONTAINER_POLL_INTERVAL_MS", 1000);
 
   for (let attempt = 0; attempt < maxPolls; attempt += 1) {
-    const status = await getContainerStatus(creationId);
+    const status = await getContainerStatus(creationId, userId);
 
     if (!status.status_code || status.status_code === "FINISHED") {
       return;
@@ -217,19 +273,21 @@ export async function waitForContainer(creationId: string) {
   );
 }
 
-export async function publishMedia(creationId: string) {
+export async function publishMedia(creationId: string, userId?: string | null) {
   return instagramPost<InstagramPublishResponse>(
-    `/${(await getInstagramApiSettings()).accountId}/media_publish`,
-    await buildTokenParams({ creation_id: creationId }),
-    "publish"
+    `/${(await getInstagramApiSettings(userId)).accountId}/media_publish`,
+    await buildTokenParams({ creation_id: creationId }, userId),
+    "publish",
+    userId
   );
 }
 
-export async function getMedia(mediaId: string) {
+export async function getMedia(mediaId: string, userId?: string | null) {
   return instagramGet<InstagramMediaResponse>(
     `/${mediaId}`,
-    await buildTokenParams({ fields: "permalink" }),
-    "media"
+    await buildTokenParams({ fields: "permalink" }, userId),
+    "media",
+    userId
   );
 }
 
@@ -237,11 +295,11 @@ export async function publishInstagramImage(
   input: PublishInstagramImageInput
 ): Promise<CreateInstagramPostResult> {
   const container = await createImageContainer(input);
-  await waitForContainer(container.id);
-  const published = await publishMedia(container.id);
+  await waitForContainer(container.id, input.userId);
+  const published = await publishMedia(container.id, input.userId);
 
   try {
-    const media = await getMedia(published.id);
+    const media = await getMedia(published.id, input.userId);
     return {
       id: published.id,
       creationId: container.id,
@@ -263,27 +321,29 @@ export async function publishInstagramCarousel(
   if (input.imageUrls.length < 2) {
     return publishInstagramImage({
       imageUrl: input.imageUrls[0] ?? "",
-      caption: input.caption
+      caption: input.caption,
+      userId: input.userId
     });
   }
 
   const childContainers: string[] = [];
 
   for (const imageUrl of input.imageUrls) {
-    const child = await createCarouselItem(imageUrl);
-    await waitForContainer(child.id);
+    const child = await createCarouselItem(imageUrl, input.userId);
+    await waitForContainer(child.id, input.userId);
     childContainers.push(child.id);
   }
 
   const carouselContainer = await createCarouselContainer({
     creationIds: childContainers,
-    caption: input.caption
+    caption: input.caption,
+    userId: input.userId
   });
-  await waitForContainer(carouselContainer.id);
-  const published = await publishMedia(carouselContainer.id);
+  await waitForContainer(carouselContainer.id, input.userId);
+  const published = await publishMedia(carouselContainer.id, input.userId);
 
   try {
-    const media = await getMedia(published.id);
+    const media = await getMedia(published.id, input.userId);
     return {
       id: published.id,
       creationId: carouselContainer.id,

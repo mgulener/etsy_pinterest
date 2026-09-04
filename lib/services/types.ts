@@ -60,6 +60,7 @@ export type PinterestPublisher = {
 export type InstagramPublisherQueueRepository = {
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
+  recoverStaleProcessing(staleBefore: string, retryScheduledAt: string): Promise<number>;
   markPublished(id: string): Promise<void>;
   markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;

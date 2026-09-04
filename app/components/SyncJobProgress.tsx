@@ -33,11 +33,12 @@ function resultSummary(job: SyncJobRow) {
     const selected = Number(result.selected ?? 0);
     const claimed = Number(result.claimed ?? 0);
     const published = Number(result.published ?? 0);
+    const recovered = Number(result.recovered ?? 0);
     const retried = Number(result.retried ?? 0);
     const failed = Number(result.failed ?? 0);
     const dryRun = Boolean(result.dryRun ?? false);
 
-    return `Selected ${selected}, claimed ${claimed}, published ${published}, retried ${retried}, failed ${failed}, dry run ${dryRun}.`;
+    return `Selected ${selected}, claimed ${claimed}, published ${published}, recovered ${recovered}, retried ${retried}, failed ${failed}, dry run ${dryRun}.`;
   }
 
   if ("generated" in result || "selected" in result) {

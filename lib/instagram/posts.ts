@@ -10,12 +10,14 @@ export async function createInstagramPost(
   if (input.mode === "carousel" && input.imageUrls && input.imageUrls.length > 1) {
     return publishInstagramCarousel({
       imageUrls: input.imageUrls,
-      caption: input.caption
+      caption: input.caption,
+      userId: input.userId
     });
   }
 
   return publishInstagramImage({
     imageUrl: input.imageUrl,
-    caption: input.caption
+    caption: input.caption,
+    userId: input.userId
   });
 }

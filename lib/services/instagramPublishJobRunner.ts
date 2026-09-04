@@ -22,12 +22,15 @@ export async function runInstagramPublishJob(jobId: string, userId: string) {
       message: "Reading Instagram publish settings"
     });
 
-    const result = await publishInstagramPosts((progress) => jobsRepository.updateProgress(jobId, progress));
+    const result = await publishInstagramPosts(
+      (progress) => jobsRepository.updateProgress(jobId, progress),
+      userId
+    );
 
     await jobsRepository.complete(
       jobId,
       result,
-      `Instagram publish finished. Selected ${result.selected}, claimed ${result.claimed}, published ${result.published}, retried ${result.retried}, failed ${result.failed}, dry run ${result.dryRun}.`
+      `Instagram publish finished. Selected ${result.selected}, claimed ${result.claimed}, published ${result.published}, recovered ${result.recovered}, retried ${result.retried}, failed ${result.failed}, dry run ${result.dryRun}.`
     );
   } catch (error) {
     const message = toErrorMessage(error);

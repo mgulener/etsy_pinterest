@@ -35,6 +35,7 @@ export type InstagramQueueRepository = {
   rebuildPendingSchedule(intervalMinutes?: number): Promise<number>;
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
+  recoverStaleProcessing(staleBefore: string, retryScheduledAt: string): Promise<number>;
   markPublished(id: string): Promise<void>;
   markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;
@@ -208,6 +209,27 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
 
       return data ?? [];
+    },
+
+    async recoverStaleProcessing(staleBefore, retryScheduledAt) {
+      const { data, error } = await supabase
+        .from("instagram_queue")
+        .update({
+          status: "pending",
+          last_error: "Recovered stale processing item. It will retry in the next publish slot.",
+          processing_started_at: null,
+          scheduled_at: retryScheduledAt,
+          schedule_locked: false
+        })
+        .eq("status", "processing")
+        .lt("processing_started_at", staleBefore)
+        .select("id");
+
+      if (error) {
+        throw new Error(`Failed to recover stale Instagram queue items: ${error.message}`);
+      }
+
+      return data?.length ?? 0;
     },
 
     async claimPending(id) {

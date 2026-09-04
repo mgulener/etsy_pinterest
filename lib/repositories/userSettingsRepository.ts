@@ -128,6 +128,27 @@ export async function getCurrentUserSettings() {
   const session = await getCurrentSession();
   return getSettingsForUser(session?.userId);
 }
+export async function getInstagramAutomationUserId() {
+  if (process.env.AUTOMATION_USER_ID) {
+    return process.env.AUTOMATION_USER_ID;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("user_settings")
+    .select("user_id")
+    .eq("instagram_enabled", true)
+    .not("instagram_access_token", "is", null)
+    .or("instagram_account_id.not.is.null,instagram_user_id.not.is.null")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Failed to resolve Instagram automation user: " + error.message);
+  }
+
+  return data?.user_id ?? null;
+}
 
 export async function saveUserSettings(userId: string, settings: UserSettingsInput) {
   const { error } = await getSupabaseAdmin()
