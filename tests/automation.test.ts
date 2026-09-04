@@ -548,7 +548,7 @@ test("sync can run with Pinterest queue disabled", async () => {
   assert.equal(instagramQueueRepository.queued[0]?.listing.etsyListingId, 101);
 });
 
-test("new listings are queued by seasonal priority with 5 minute schedule spacing", async () => {
+test("new listings are queued by seasonal priority with 10 minute schedule spacing", async () => {
   const listingsRepository = new MemoryListingsRepository();
   const queueRepository = new MemorySyncQueueRepository();
   const instagramQueueRepository = new MemoryInstagramSyncQueueRepository();
@@ -579,8 +579,8 @@ test("new listings are queued by seasonal priority with 5 minute schedule spacin
   const second = new Date(instagramQueueRepository.queued[1].scheduledAt ?? "").getTime();
   const third = new Date(instagramQueueRepository.queued[2].scheduledAt ?? "").getTime();
 
-  assert.equal(second - first, 5 * 60_000);
-  assert.equal(third - second, 5 * 60_000);
+  assert.equal(second - first, 10 * 60_000);
+  assert.equal(third - second, 10 * 60_000);
   assert.equal(first >= now - 1000, true);
 });
 
