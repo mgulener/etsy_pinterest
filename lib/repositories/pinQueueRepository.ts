@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { paginateQueue } from "@/lib/queue/pagination";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import { buildScheduledAt, DEFAULT_QUEUE_INTERVAL_MINUTES, sortQueueRowsForPublishing } from "@/lib/queue/scheduling";
 import type { PinQueueRow, PinQueueStatus } from "@/lib/supabase/types";
@@ -306,34 +307,40 @@ export function createPinQueueRepository(): PinQueueRepository {
     },
 
     async list({ page, pageSize, status, search }) {
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-      let query = supabase
-        .from("pin_queue")
-        .select("*", { count: "exact" })
-        .order("scheduled_at", { ascending: true })
-        .order("created_at", { ascending: true })
-        .range(from, to);
+      return paginateQueue<PinQueueRow>({
+        page, pageSize, filtered: Boolean(status),
+        async read(partition, from, limit) {
+          let query = supabase
+            .from("pin_queue")
+            .select("*", { count: "exact", head: limit === 0 })
+            .order("scheduled_at", { ascending: true })
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true });
+          if (limit > 0) query = query.range(from, from + limit - 1);
+          if (partition === "unpublished") query = query.neq("status", "published");
+          if (partition === "published") query = query.eq("status", "published");
 
-      if (status) {
-        query = query.eq("status", status);
-      }
+          if (status) {
+            query = query.eq("status", status);
+          }
 
-      if (search) {
-        const escaped = search.replaceAll("%", "\%").replaceAll("_", "\_");
-        query = query.ilike("title", `%${escaped}%`);
-      }
+          if (search) {
+            const escaped = search.replaceAll("%", "\%").replaceAll("_", "\_");
+            query = query.ilike("title", `%${escaped}%`);
+          }
 
-      const { data, count, error } = await query;
+          const { data, count, error } = await query;
 
-      if (error) {
-        throw new Error(`Failed to list pin queue: ${error.message}`);
-      }
+          if (error) {
+            throw new Error(`Failed to list pin queue: ${error.message}`);
+          }
 
-      return {
-        rows: data ?? [],
-        total: count ?? 0
-      };
+          return {
+            rows: data ?? [],
+            total: count ?? 0
+          };
+        }
+      });
     }
   };
 }
