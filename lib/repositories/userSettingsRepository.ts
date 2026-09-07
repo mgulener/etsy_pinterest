@@ -128,6 +128,26 @@ export async function getCurrentUserSettings() {
   const session = await getCurrentSession();
   return getSettingsForUser(session?.userId);
 }
+export async function getEtsyAutomationUserId() {
+  if (process.env.AUTOMATION_USER_ID) {
+    return process.env.AUTOMATION_USER_ID;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("user_settings")
+    .select("user_id")
+    .not("etsy_access_token", "is", null)
+    .limit(2);
+
+  if (error) {
+    throw new Error("Failed to resolve Etsy automation user: " + error.message);
+  }
+  if (data && data.length > 1) {
+    throw new Error("Multiple Etsy accounts configured; set AUTOMATION_USER_ID");
+  }
+  return data?.[0]?.user_id ?? null;
+}
+
 export async function getInstagramAutomationUserId() {
   if (process.env.AUTOMATION_USER_ID) {
     return process.env.AUTOMATION_USER_ID;
