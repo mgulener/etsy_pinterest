@@ -9,7 +9,6 @@ import {
   deleteInstagramQueueItemAction,
   generateInstagramCaptionsAction,
   publishInstagramNowAction,
-  rebuildInstagramScheduleAction,
   retryAllFailedInstagramAction,
   retryInstagramQueueItemAction,
   updateInstagramScheduleAction
@@ -168,11 +167,6 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
           <form action={publishInstagramNowAction}>
             <SubmitButton pendingText="Publishing Instagram...">
               Publish Instagram Now
-            </SubmitButton>
-          </form>
-          <form action={rebuildInstagramScheduleAction}>
-            <SubmitButton className="btn btn-outline-primary" pendingText="Rebuilding...">
-              Rebuild Schedule
             </SubmitButton>
           </form>
           <form action={retryAllFailedInstagramAction}>

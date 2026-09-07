@@ -429,7 +429,8 @@ test("queue action UI uses icons and enabled platform settings", () => {
   assert.doesNotMatch(pinterestQueuePage, />C<\/span>/);
   assert.doesNotMatch(instagramQueuePage, />C<\/span>/);
   assert.match(instagramQueuePage, /generateInstagramCaptionsAction/);
-  assert.match(instagramQueuePage, /rebuildInstagramScheduleAction/);
+  assert.doesNotMatch(instagramQueuePage, /rebuildInstagramScheduleAction|Rebuild Schedule/);
+  assert.doesNotMatch(pinterestQueuePage, /rebuildPinterestScheduleAction|Rebuild Schedule/);
   assert.match(instagramQueuePage, /caption_source/);
   assert.match(instagramQueuePage, /schedule_locked/);
   assert.match(instagramQueuePage, /Europe\/Istanbul/);

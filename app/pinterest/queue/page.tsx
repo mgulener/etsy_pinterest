@@ -5,7 +5,6 @@ import {
   cancelQueueItemAction,
   deleteQueueItemAction,
   publishNowAction,
-  rebuildPinterestScheduleAction,
   retryAllFailedAction,
   retryQueueItemAction,
   updatePinterestScheduleAction
@@ -103,11 +102,6 @@ export default async function QueuePage({ searchParams }: PageProps) {
         <div className="actions">
           <form action={publishNowAction}>
             <SubmitButton pendingText="Publishing pins...">Publish Pins Now</SubmitButton>
-          </form>
-          <form action={rebuildPinterestScheduleAction}>
-            <SubmitButton className="btn btn-outline-primary" pendingText="Rebuilding...">
-              Rebuild Schedule
-            </SubmitButton>
           </form>
           <form action={retryAllFailedAction}>
             <SubmitButton className="ghost-button" pendingText="Retrying...">Retry Failed</SubmitButton>
