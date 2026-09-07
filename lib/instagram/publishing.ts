@@ -365,3 +365,35 @@ export async function publishInstagramCarousel(
     };
   }
 }
+
+// Preparation creates containers only; the durable publisher owns media_publish.
+export async function prepareInstagramContainer(input: import("./types").CreateInstagramPostInput) {
+  if (input.mode === "carousel" && input.imageUrls && input.imageUrls.length > 1) {
+    const children: string[] = [];
+    for (const url of input.imageUrls) {
+      const child = await createCarouselItem(url, input.userId);
+      await waitForContainer(child.id, input.userId);
+      children.push(child.id);
+    }
+    return (await createCarouselContainer({ creationIds: children, caption: input.caption, userId: input.userId })).id;
+  }
+  return (await createImageContainer(input)).id;
+}
+
+export async function findOwnedInstagramMedia(mediaId: string, userId: string) {
+  const settings = await getInstagramApiSettings(userId);
+  let after: string | undefined;
+  for (let page = 0; page < 20; page += 1) {
+    const data = await instagramGet<{
+      data: Array<{ id: string; caption?: string; permalink?: string; timestamp: string; media_type: string }>;
+      paging?: { cursors?: { after?: string }; next?: string };
+    }>(`/${settings.accountId}/media`, await buildTokenParams({
+      fields: "id,caption,permalink,timestamp,media_type", limit: "100", ...(after ? { after } : {})
+    }, userId), "media", userId);
+    const media = data.data.find((item) => item.id === mediaId);
+    if (media) return media;
+    if (!data.paging?.next || !data.paging.cursors?.after) break;
+    after = data.paging.cursors.after;
+  }
+  throw new Error("Media ID was not found in the connected Instagram account.");
+}

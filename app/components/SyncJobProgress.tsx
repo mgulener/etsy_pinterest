@@ -40,7 +40,7 @@ function resultSummary(job: SyncJobRow) {
     const failed = Number(result.failed ?? 0);
     const dryRun = Boolean(result.dryRun ?? false);
 
-    return `Selected ${selected}, claimed ${claimed}, published ${published}, recovered ${recovered}, retried ${retried}, failed ${failed}, dry run ${dryRun}.`;
+    return `Selected ${selected}, claimed ${claimed}, published ${published}, recovered ${recovered}, retried ${retried}, failed ${failed}, needs verification ${Number(result.needsReview ?? 0)}, dry run ${dryRun}.`;
   }
 
   if ("generated" in result || "selected" in result) {

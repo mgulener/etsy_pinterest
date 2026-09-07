@@ -90,7 +90,10 @@ export function createInstagramPostsRepository(): InstagramPostsRepository {
       });
 
       if (error?.code === "23505") {
-        return;
+        const { data: existing, error: readError } = await supabase.from("instagram_posts")
+          .select("instagram_media_id").eq("etsy_listing_id", input.etsyListingId).maybeSingle();
+        if (!readError && existing?.instagram_media_id === input.instagramMediaId) return;
+        throw new Error("Conflicting Instagram publish receipt; manual verification required.");
       }
 
       if (error) {

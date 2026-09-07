@@ -30,7 +30,7 @@ export async function runInstagramPublishJob(jobId: string, userId: string) {
     await jobsRepository.complete(
       jobId,
       result,
-      `Instagram publish finished. Selected ${result.selected}, claimed ${result.claimed}, published ${result.published}, recovered ${result.recovered}, retried ${result.retried}, failed ${result.failed}, dry run ${result.dryRun}.`
+      `Instagram publish finished. Selected ${result.selected}, claimed ${result.claimed}, published ${result.published}, recovered ${result.recovered}, retried ${result.retried}, failed ${result.failed}, needs verification ${result.needsReview}, dry run ${result.dryRun}.`
     );
   } catch (error) {
     const message = toErrorMessage(error);

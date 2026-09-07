@@ -42,6 +42,7 @@ export type InstagramQueueRepository = {
   claimPending(id: string): Promise<InstagramQueueRow | null>;
   recoverStaleProcessing(staleBefore: string, retryScheduledAt: string): Promise<number>;
   markPublished(id: string): Promise<void>;
+  markNeedsReview(id: string, error: string): Promise<void>;
   markRetryable(id: string, error: string, attemptCount: number, retryScheduledAt: string): Promise<void>;
   markFailed(id: string, error: string, attemptCount: number): Promise<void>;
   markPendingAfterDryRun(id: string): Promise<void>;
@@ -285,6 +286,13 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       return data;
     },
 
+    async markNeedsReview(id, message) {
+      const { error } = await supabase.from("instagram_queue").update({
+        status: "needs_review", last_error: message, processing_started_at: null
+      }).eq("id", id).in("status", ["processing", "needs_review"]);
+      if (error) throw new Error("Failed to mark Instagram item for verification: " + error.message);
+    },
+
     async markPublished(id) {
       const { error } = await supabase
         .from("instagram_queue")
@@ -310,7 +318,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           scheduled_at: retryScheduledAt,
           schedule_locked: false
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "processing");
 
       if (error) {
         throw new Error(`Failed to return Instagram queue item ${id} to pending: ${error.message}`);
@@ -327,7 +336,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           processing_started_at: null,
           processed_at: new Date().toISOString()
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "processing");
 
       if (error) {
         throw new Error(`Failed to mark Instagram queue item ${id} as failed: ${error.message}`);
@@ -342,7 +352,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           last_error: null,
           processing_started_at: null
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "processing");
 
       if (error) {
         throw new Error(`Failed to restore dry-run Instagram queue item ${id}: ${error.message}`);
@@ -395,7 +406,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           processed_at: new Date().toISOString()
         })
         .eq("id", id)
-        .in("status", ["pending", "failed", "processing"]);
+        .in("status", ["pending", "failed"]);
 
       if (error) {
         throw new Error(`Failed to cancel Instagram queue item ${id}: ${error.message}`);
@@ -406,7 +417,8 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       const { error } = await supabase
         .from("instagram_queue")
         .delete()
-        .eq("id", id);
+        .eq("id", id)
+        .in("status", ["pending", "failed", "cancelled", "published"]);
 
       if (error) {
         throw new Error(`Failed to delete Instagram queue item ${id}: ${error.message}`);

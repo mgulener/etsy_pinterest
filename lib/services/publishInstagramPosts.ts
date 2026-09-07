@@ -1,5 +1,7 @@
 import { getCurrentUserSettings, getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
-import { createInstagramPost } from "@/lib/instagram/posts";
+import { createDurableInstagramPublisher, InstagramVerificationRequired } from "@/lib/instagram/durablePublishing";
+import { createInstagramPublishAttemptsRepository } from "@/lib/repositories/instagramPublishAttemptsRepository";
+import { prepareInstagramContainer, waitForContainer, publishMedia, getContainerStatus, getMedia } from "@/lib/instagram/publishing";
 import { InstagramApiError } from "@/lib/instagram/types";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
@@ -21,6 +23,7 @@ export type PublishInstagramPostsResult = {
   recovered: number;
   failed: number;
   retried: number;
+  needsReview: number;
   dryRun: boolean;
   errors: Array<{ etsyListingId: number; message: string }>;
 };
@@ -64,6 +67,7 @@ export async function publishInstagramPostsWithDependencies(input: {
   let skippedDuplicates = 0;
   let failed = 0;
   let retried = 0;
+  let needsReview = 0;
   const errors: PublishInstagramPostsResult["errors"] = [];
 
   for (const [index, pendingItem] of pendingItems.entries()) {
@@ -93,6 +97,7 @@ export async function publishInstagramPostsWithDependencies(input: {
       attemptCount: item.attempt_count
     });
 
+    let remotePostCreated = false;
     try {
       const existingPost = await input.postsRepository.findByEtsyListingId(
         item.etsy_listing_id
@@ -133,7 +138,8 @@ export async function publishInstagramPostsWithDependencies(input: {
           : [],
         caption: item.caption,
         mode: item.post_mode
-      });
+      }, item.etsy_listing_id);
+      remotePostCreated = true;
 
       await input.postsRepository.createPost({
         etsyListingId: item.etsy_listing_id,
@@ -141,7 +147,7 @@ export async function publishInstagramPostsWithDependencies(input: {
         instagramMediaId: post.id,
         instagramCreationId: post.creationId,
         mediaType: post.mediaType,
-        caption: item.caption,
+        caption: post.caption ?? item.caption,
         instagramPermalink: post.permalink
       });
 
@@ -160,6 +166,12 @@ export async function publishInstagramPostsWithDependencies(input: {
       const message = toErrorMessage(error);
       const nextAttemptCount = item.attempt_count + 1;
       errors.push({ etsyListingId: item.etsy_listing_id, message });
+
+      if (remotePostCreated || error instanceof InstagramVerificationRequired) {
+        await input.queueRepository.markNeedsReview(item.id, message);
+        needsReview += 1;
+        continue;
+      }
 
       if (nextAttemptCount >= input.maxRetries || !shouldRetryError(error)) {
         await input.queueRepository.markFailed(item.id, message, nextAttemptCount);
@@ -200,6 +212,7 @@ export async function publishInstagramPostsWithDependencies(input: {
     recovered,
     failed,
     retried,
+    needsReview,
     dryRun: input.dryRun,
     errors
   };
@@ -223,23 +236,40 @@ export async function publishInstagramPosts(
       recovered: 0,
       failed: 0,
       retried: 0,
+      needsReview: 0,
       dryRun: settings.dryRun,
       errors: []
     };
   }
 
+  const publisher = getDurableInstagramPublisher(settings, userId);
   return publishInstagramPostsWithDependencies({
     queueRepository: createInstagramQueueRepository(),
     postsRepository: createInstagramPostsRepository(),
     instagram: {
-      createPost: (postInput) => createInstagramPost({
-        ...postInput,
-        userId: settings.userId ?? userId
-      })
+      createPost: (postInput, listingId) => publisher.create(listingId, postInput)
     },
     maxPostsPerRun: settings.maxInstagramPostsPerRun,
     maxRetries: settings.maxInstagramRetries,
     dryRun: settings.dryRun,
     onProgress
   });
+}
+
+export function getDurableInstagramPublisher(settings: Awaited<ReturnType<typeof getSettingsForUser>>, userId?: string | null) {
+  const owner = settings.userId ?? userId;
+  const accountId = settings.instagramAccountId || settings.instagramUserId;
+  if (!accountId || !owner) throw new Error("Instagram account and user are required for durable publishing.");
+  return createDurableInstagramPublisher(createInstagramPublishAttemptsRepository(), {
+    prepare: (input) => prepareInstagramContainer({ ...input, userId: owner }),
+    wait: async (id) => {
+      if ((await getContainerStatus(id, owner)).status_code === "PUBLISHED") {
+        throw new InstagramVerificationRequired("Container is already published; media ID verification required.");
+      }
+      await waitForContainer(id, owner);
+    },
+    publish: (id) => publishMedia(id, owner),
+    status: (id) => getContainerStatus(id, owner),
+    media: (id) => getMedia(id, owner)
+  }, accountId);
 }

@@ -255,6 +255,10 @@ class MemoryPublisherQueueRepository implements PublisherQueueRepository {
 }
 
 class MemoryInstagramPublisherQueueRepository implements InstagramPublisherQueueRepository {
+  async markNeedsReview(id: string, error: string) {
+    const item = this.items.find((row) => row.id === id);
+    if (item) { item.status = "needs_review"; item.last_error = error; }
+  }
   items: InstagramQueueRow[];
 
   constructor(items: InstagramQueueRow[]) {
@@ -1411,4 +1415,21 @@ test("published listing renewed by Etsy does not create a duplicate pin", async 
   });
 
   assert.equal(queueRepository.queued.length, 0);
+});
+
+
+test("DB failure after successful Instagram publish requires review instead of retry", async () => {
+  const queueRepository = new MemoryInstagramPublisherQueueRepository([makeInstagramQueueItem({ id: "db-failure", etsy_listing_id: 9001 })]);
+  const postsRepository = new MemoryInstagramPostsRepository();
+  postsRepository.createPost = async () => { throw new Error("Database unavailable after Meta published"); };
+  let publishCalls = 0;
+  const deps = { queueRepository, postsRepository, instagram: { createPost: async () => {
+    publishCalls++; return { id: "remote-9001", mediaType: "IMAGE" as const };
+  } }, maxPostsPerRun: 1, maxRetries: 3, dryRun: false };
+  const first = await publishInstagramPostsWithDependencies(deps);
+  assert.equal(first.needsReview, 1);
+  assert.equal(first.retried, 0);
+  assert.equal(queueRepository.items[0].status, "needs_review");
+  await publishInstagramPostsWithDependencies(deps);
+  assert.equal(publishCalls, 1);
 });

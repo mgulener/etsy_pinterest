@@ -13,6 +13,7 @@ export type CreateInstagramPostInput = {
 export type CreateInstagramPostResult = {
   id: string;
   creationId?: string;
+  caption?: string;
   mediaType: "IMAGE" | "CAROUSEL";
   permalink?: string;
 };

@@ -1,3 +1,4 @@
+import { VerifyPostButton } from "./VerifyPostButton";
 import { ConfirmDeleteButton } from "@/app/components/ConfirmDeleteButton";
 import { Pagination } from "@/app/components/Pagination";
 import { ScheduleButton } from "@/app/components/ScheduleButton";
@@ -26,7 +27,7 @@ type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-const statuses: PinQueueStatus[] = ["pending", "processing", "published", "failed", "cancelled"];
+const statuses: PinQueueStatus[] = ["pending", "processing", "published", "failed", "cancelled", "needs_review"];
 
 function getParam(params: Record<string, string | string[] | undefined>, key: string) {
   const value = params[key];
@@ -255,7 +256,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                   </div>
                 </td>
                 <td>
-                  <span className={`badge ${item.status}`}>{item.status}</span>
+                  <span className={`badge ${item.status === "needs_review" ? "text-bg-warning" : item.status}`}>{item.status === "needs_review" ? "Needs verification" : item.status}</span>
                 </td>
                 <td>{item.attempt_count}</td>
                 <td>{item.post_mode}</td>
@@ -310,11 +311,12 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                         </SubmitButton>
                       </form>
                     ) : null}
-                    <ConfirmDeleteButton
+                    {item.status === "needs_review" ? <VerifyPostButton id={item.id} /> : null}
+                    {item.status !== "processing" && item.status !== "needs_review" ? <ConfirmDeleteButton
                       id={item.id}
                       title={item.title}
                       action={deleteInstagramQueueItemAction}
-                    />
+                    /> : null}
                   </div>
                 </td>
               </tr>

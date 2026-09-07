@@ -1,3 +1,4 @@
+import type { PublishAttempt } from "@/lib/instagram/durablePublishing";
 export type Json =
   | string
   | number
@@ -11,7 +12,8 @@ export type PinQueueStatus =
   | "processing"
   | "published"
   | "failed"
-  | "cancelled";
+  | "cancelled"
+  | "needs_review";
 
 export type SyncJobStatus = "queued" | "running" | "succeeded" | "failed";
 export type SyncJobType = "etsy_sync" | "instagram_ai_captions" | "instagram_publish";
@@ -261,6 +263,12 @@ export type Database = {
             referencedColumns: ["etsy_listing_id"];
           }
         ];
+      };
+      instagram_publish_attempts: {
+        Row: PublishAttempt & { updated_at: string };
+        Insert: Pick<PublishAttempt, "etsy_listing_id" | "account_id" | "caption" | "media_type"> & Partial<PublishAttempt>;
+        Update: Partial<PublishAttempt>;
+        Relationships: [];
       };
       instagram_queue: {
         Row: InstagramQueueRow;

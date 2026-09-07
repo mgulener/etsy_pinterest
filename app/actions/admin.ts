@@ -1,5 +1,7 @@
 "use server";
 
+import { reconcileInstagramPost } from "@/lib/services/reconcileInstagramPost";
+import { createInstagramPublishAttemptsRepository } from "@/lib/repositories/instagramPublishAttemptsRepository";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -403,6 +405,18 @@ export async function queueInstagramPostAgainAction(formData: FormData) {
     throw new Error(`Failed to find Etsy listing for Instagram republish: ${error.message}`);
   }
 
+  const settings = await getCurrentUserSettings();
+  const accountId = settings.instagramAccountId || settings.instagramUserId;
+  if (!accountId) throw new Error("Connect Instagram before requeueing a post.");
+  const attempt = await createInstagramPublishAttemptsRepository().findActive(post.etsy_listing_id, accountId);
+  if (attempt) {
+    if (attempt.state !== "published" || attempt.media_id !== post.instagram_media_id) {
+      throw new Error("Resolve the previous Instagram publish attempt before republishing.");
+    }
+    const { error: retireError } = await supabase.from("instagram_publish_attempts")
+      .update({ state: "retired" }).eq("id", attempt.id).eq("state", "published");
+    if (retireError) throw new Error(retireError.message);
+  }
   await postsRepository.deleteById(id);
 
   const fallbackListing: NormalizedEtsyListing = {
@@ -518,4 +532,17 @@ export async function cancelQueueItemAction(formData: FormData) {
   }
 
   revalidatePath("/pinterest/queue");
+}
+
+export async function verifyInstagramPostAction(formData: FormData): Promise<{ error?: string }> {
+  const session = await requireAdminSession();
+  try {
+    await reconcileInstagramPost(String(formData.get("id") ?? ""), session.userId,
+      String(formData.get("mediaId") ?? "").trim() || undefined);
+    revalidatePath("/instagram/queue");
+    revalidatePath("/instagram/posts");
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Verification failed" };
+  }
 }

@@ -58,6 +58,7 @@ export type PinterestPublisher = {
 };
 
 export type InstagramPublisherQueueRepository = {
+  markNeedsReview(id: string, error: string): Promise<void>;
   listPending(limit: number): Promise<InstagramQueueRow[]>;
   claimPending(id: string): Promise<InstagramQueueRow | null>;
   recoverStaleProcessing(staleBefore: string, retryScheduledAt: string): Promise<number>;
@@ -81,5 +82,5 @@ export type InstagramPublisherPostsRepository = {
 };
 
 export type InstagramPublisher = {
-  createPost(input: CreateInstagramPostInput): Promise<CreateInstagramPostResult>;
+  createPost(input: CreateInstagramPostInput, listingId: number): Promise<CreateInstagramPostResult>;
 };

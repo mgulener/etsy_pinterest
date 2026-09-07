@@ -339,3 +339,16 @@ UNIQUE(etsy_listing_id, etsy_image_id)
 ```
 
 The Pinterest client accepts a generic `createPin({ boardId, imageUrl, title, description, destinationUrl })` input, so future board routing, AI-generated SEO text, multiple images, and UTM tracking can be added without coupling Pinterest publishing to Etsy response objects.
+
+
+### Instagram publish verification
+
+Apply `supabase/migrations/0015_instagram_publish_attempts.sql` in Supabase SQL Editor before deploying this change. The migration adds the durable publish journal and the `needs_review` queue status. Pause publish triggers and let active workers finish during rollout; old workers do not write this journal.
+
+Each account/listing has at most one active publish attempt. The parent container is saved before the conditional `ready -> publishing` transition. A lost response after that transition must never start a fresh publish. Confirmed media IDs survive post-table write failures. Preparation failures before the transition remain retryable.
+
+Queue items with uncertain outcomes show **Needs verification**. **Verify** reads the saved receipt/container without publishing. If Meta confirms publication but no media ID was saved, supply the existing media ID; the server checks that it belongs to the connected account and matches the attempt's caption, media type, and time before recording it. A FINISHED, ERROR, EXPIRED, or unavailable container response alone never authorizes another publish after an ambiguous submission. Unresolved cases remain held for manual investigation.
+
+Retry Failed does not reset these records. Journal entries survive queue deletion. The explicit Queue Again action retires a confirmed attempt while preserving its history. Historical posts without journal entries require a separate audit; caption similarity alone is not used to auto-link them.
+
+Verification: `npm test`, `npm run typecheck`, `npm run lint`, `npm run build`. Tests simulate lost Meta/DB responses, crashes at the publishing boundary, simultaneous workers, and post-table failures. No real Instagram post is created by the tests.
