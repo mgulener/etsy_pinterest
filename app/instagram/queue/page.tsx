@@ -20,6 +20,8 @@ import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueu
 import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import type { PinQueueStatus } from "@/lib/supabase/types";
 
+import { createOptionalReader } from "@/lib/utils/optionalRead";
+
 export const dynamic = "force-dynamic";
 
 type PageProps = {
@@ -131,6 +133,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
   const instagramQueueRepository = createInstagramQueueRepository();
   const syncJobsRepository = createSyncJobsRepository();
   const appSettingsRepository = createAppSettingsRepository();
+  const optional = createOptionalReader();
   const [result, latestAiCaptionJob, latestInstagramPublishJob, dismissedProgressJobIds] = await Promise.all([
     instagramQueueRepository.list({
       page,
@@ -138,9 +141,9 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
       status,
       search: search.trim() || undefined
     }),
-    syncJobsRepository.getLatestForUser(session.userId, "instagram_ai_captions"),
-    syncJobsRepository.getLatestForUser(session.userId, "instagram_publish"),
-    appSettingsRepository.getDismissedProgressJobIds(session.userId)
+    optional.read("Instagram caption progress", syncJobsRepository.getLatestForUser(session.userId, "instagram_ai_captions"), null),
+    optional.read("Instagram publish progress", syncJobsRepository.getLatestForUser(session.userId, "instagram_publish"), null),
+    optional.read("Dismissed progress", appSettingsRepository.getDismissedProgressJobIds(session.userId), [])
   ]);
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
   const actionMessage = buildActionMessage(params);
@@ -175,6 +178,7 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
         </div>
       </div>
 
+      {optional.failures.length > 0 ? <div className="alert alert-warning" role="alert">Progress information is temporarily unavailable. Reload to try again.</div> : null}
       {actionMessage ? <section className={`alert alert-${actionMessage.tone}`} role="alert">{actionMessage.text}</section> : null}
 
       <SyncJobProgress

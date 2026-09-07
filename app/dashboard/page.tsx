@@ -12,6 +12,7 @@ import { createListingsRepository } from "@/lib/repositories/listingsRepository"
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
 import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
+import { createOptionalReader } from "@/lib/utils/optionalRead";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -47,11 +48,11 @@ function buildActionMessage(params: Record<string, string | string[] | undefined
   return null;
 }
 
-function MetricRow({ label, value, tone }: { label: string; value: number; tone?: "success" | "warning" | "danger" }) {
+function MetricRow({ label, value, tone }: { label: string; value: number | null; tone?: "success" | "warning" | "danger" }) {
   return (
     <div className={`metric-row ${tone ?? ""}`}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>{value ?? "Unavailable"}</strong>
     </div>
   );
 }
@@ -68,6 +69,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const queueRepository = createPinQueueRepository();
   const postsRepository = createPinterestPostsRepository();
   const syncJobsRepository = createSyncJobsRepository();
+  const optional = createOptionalReader();
 
   const [
     initialSyncCompleted,
@@ -81,16 +83,16 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     latestSyncJob,
     dismissedProgressJobIds
   ] = await Promise.all([
-    settingsRepository.isInitialSyncCompleted(),
-    listingsRepository.count(),
-    queueRepository.countByStatus("pending"),
-    postsRepository.count(),
-    queueRepository.countByStatus("failed"),
-    instagramQueueRepository.countByStatus("pending"),
-    instagramPostsRepository.count(),
-    instagramQueueRepository.countByStatus("failed"),
-    syncJobsRepository.getLatestForUser(session.userId, "etsy_sync"),
-    settingsRepository.getDismissedProgressJobIds(session.userId)
+    optional.read("Initial sync status", settingsRepository.isInitialSyncCompleted(), null),
+    optional.read("Listings count", listingsRepository.count(), null),
+    optional.read("Pinterest pending count", queueRepository.countByStatus("pending"), null),
+    optional.read("Pinterest published count", postsRepository.count(), null),
+    optional.read("Pinterest failed count", queueRepository.countByStatus("failed"), null),
+    optional.read("Instagram pending count", instagramQueueRepository.countByStatus("pending"), null),
+    optional.read("Instagram published count", instagramPostsRepository.count(), null),
+    optional.read("Instagram failed count", instagramQueueRepository.countByStatus("failed"), null),
+    optional.read("Etsy sync progress", syncJobsRepository.getLatestForUser(session.userId, "etsy_sync"), null),
+    optional.read("Dismissed progress", settingsRepository.getDismissedProgressJobIds(session.userId), [])
   ]);
 
   return (
@@ -126,9 +128,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </section>
       ) : null}
 
+      {optional.failures.length > 0 ? <div className="alert alert-warning" role="alert">Some dashboard information is temporarily unavailable. Reload to try again.</div> : null}
       <SyncJobProgress initialJob={latestSyncJob} initialDismissedJobIds={dismissedProgressJobIds} />
 
-      {!initialSyncCompleted ? (
+      {initialSyncCompleted === false ? (
         <section className="notice">
           <div>
             <h2>Initial Etsy Sync Required</h2>
@@ -152,7 +155,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             </div>
           </div>
           <div className="channel-primary-metric">
-            <strong>{listingsCount}</strong>
+            <strong>{listingsCount ?? "Unavailable"}</strong>
             <span>Total listings</span>
           </div>
           <a className="channel-link" href="/etsy/listings">View listings</a>
