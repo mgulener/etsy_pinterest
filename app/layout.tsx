@@ -6,8 +6,8 @@ import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Etsy Social Automation",
-  description: "Etsy to social publishing automation dashboard"
+  title: "TheCozyCedar Social Automation",
+  description: "Private Etsy, Pinterest, and Instagram publishing workspace"
 };
 
 export default async function RootLayout({

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { loginAction, type LoginState } from "./actions";
 
@@ -26,6 +27,11 @@ export default function LoginPage() {
         <button type="submit" disabled={pending}>
           {pending ? "Signing in..." : "Sign in"}
         </button>
+        <nav className="login-legal-links" aria-label="Public pages">
+          <Link href="/">Home</Link>
+          <Link href="/privacy">Privacy</Link>
+          <Link href="/data-deletion">Data deletion</Link>
+        </nav>
       </form>
     </main>
   );
