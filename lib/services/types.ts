@@ -19,6 +19,7 @@ export type SyncListingsRepository = {
 
 export type SyncQueueRepository = {
   enqueueListing(listing: NormalizedEtsyListing, boardId: string, options?: { scheduledAt?: string }): Promise<"created" | "duplicate">;
+  rebuildPendingSchedule?(): Promise<number>;
 };
 
 export type InstagramSyncQueueRepository = {
@@ -27,6 +28,7 @@ export type InstagramSyncQueueRepository = {
     captionSource?: "rule" | "ai";
     scheduledAt?: string;
   }): Promise<"created" | "duplicate">;
+  rebuildPendingSchedule?(): Promise<number>;
 };
 
 export type BootstrapSettingsRepository = {

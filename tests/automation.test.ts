@@ -100,6 +100,7 @@ class MemoryListingsRepository implements SyncListingsRepository {
 
 class MemorySyncQueueRepository implements SyncQueueRepository {
   queued: Array<{ listing: NormalizedEtsyListing; scheduledAt?: string }> = [];
+  rebuilds = 0;
 
   async enqueueListing(listing: NormalizedEtsyListing, _boardId: string, options?: { scheduledAt?: string }) {
     if (this.queued.some((item) => item.listing.etsyListingId === listing.etsyListingId)) {
@@ -108,6 +109,11 @@ class MemorySyncQueueRepository implements SyncQueueRepository {
 
     this.queued.push({ listing, scheduledAt: options?.scheduledAt });
     return "created" as const;
+  }
+
+  async rebuildPendingSchedule() {
+    this.rebuilds += 1;
+    return this.queued.length;
   }
 }
 
@@ -118,6 +124,7 @@ class MemoryInstagramSyncQueueRepository implements InstagramSyncQueueRepository
     captionSource?: "rule" | "ai";
     scheduledAt?: string;
   }> = [];
+  rebuilds = 0;
 
   async enqueueListing(
     listing: NormalizedEtsyListing,
@@ -134,6 +141,11 @@ class MemoryInstagramSyncQueueRepository implements InstagramSyncQueueRepository
       scheduledAt: options?.scheduledAt
     });
     return "created" as const;
+  }
+
+  async rebuildPendingSchedule() {
+    this.rebuilds += 1;
+    return this.queued.length;
   }
 }
 
@@ -590,6 +602,8 @@ test("new listings are queued by seasonal priority with 10 minute schedule spaci
   assert.equal(second - first, 10 * 60_000);
   assert.equal(third - second, 10 * 60_000);
   assert.equal(first >= now - 1000, true);
+  assert.equal(queueRepository.rebuilds, 1);
+  assert.equal(instagramQueueRepository.rebuilds, 1);
 });
 
 test("new Instagram queue items can receive AI captions during Etsy sync", async () => {
@@ -611,6 +625,48 @@ test("new Instagram queue items can receive AI captions during Etsy sync", async
   assert.deepEqual(generatedFor, [101]);
   assert.equal(instagramQueueRepository.queued[0]?.caption, "AI caption\n\n#specificproduct");
   assert.equal(instagramQueueRepository.queued[0]?.captionSource, "ai");
+});
+
+test("a transient progress update failure does not skip a new listing", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const instagramQueueRepository = new MemoryInstagramSyncQueueRepository();
+
+  const result = await syncEtsyListingsWithDependencies({
+    etsy: { getAllActiveListings: async () => [etsyListing(101)] },
+    listingsRepository,
+    instagramQueueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    onProgress: async () => {
+      throw new Error("Gateway Timeout");
+    }
+  });
+
+  assert.equal(result.created, 1);
+  assert.equal(result.instagramQueued, 1);
+  assert.equal(result.errors.length, 0);
+  assert.equal(listingsRepository.listings.has(101), true);
+});
+
+test("a queue failure leaves a new listing eligible for the next sync", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const queueRepository: SyncQueueRepository = {
+    async enqueueListing() {
+      throw new Error("Queue unavailable");
+    }
+  };
+
+  const result = await syncEtsyListingsWithDependencies({
+    etsy: { getAllActiveListings: async () => [etsyListing(101)] },
+    listingsRepository,
+    queueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    boardId: "board-1"
+  });
+
+  assert.equal(result.created, 0);
+  assert.equal(result.queued, 0);
+  assert.equal(result.errors[0]?.etsyListingId, 101);
+  assert.equal(listingsRepository.listings.has(101), false);
 });
 
 test("Instagram captions use product-specific hashtags", () => {

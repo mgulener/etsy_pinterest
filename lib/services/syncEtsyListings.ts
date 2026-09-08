@@ -44,10 +44,20 @@ export async function syncEtsyListingsWithDependencies(input: {
   onProgress?: (progress: SyncProgress) => Promise<void> | void;
   instagramCaptionGenerator?: (listing: NormalizedEtsyListing) => Promise<string>;
 }): Promise<SyncEtsyListingsResult> {
+  const reportProgress = async (progress: SyncProgress) => {
+    try {
+      await input.onProgress?.(progress);
+    } catch (error) {
+      logger.warn("SYNC", "Progress update failed; sync will continue", {
+        message: error instanceof Error ? error.message : "Unknown progress update error"
+      });
+    }
+  };
+
   const initialSyncCompleted = await input.settingsRepository.isInitialSyncCompleted();
 
   if (!initialSyncCompleted) {
-    await input.onProgress?.({ current: 100, message: "Initial sync required; sync skipped" });
+    await reportProgress({ current: 100, message: "Initial sync required; sync skipped" });
     logger.warn("SYNC", "Initial sync is not completed; normal sync skipped");
     return {
       mode: "sync",
@@ -61,22 +71,23 @@ export async function syncEtsyListingsWithDependencies(input: {
     };
   }
 
-  await input.onProgress?.({ current: 10, message: "Fetching Etsy listings" });
+  await reportProgress({ current: 10, message: "Fetching Etsy listings" });
   const etsyListings = await input.etsy.getAllActiveListings();
-  await input.onProgress?.({ current: 35, message: `Fetched ${etsyListings.length} Etsy listings` });
+  await reportProgress({ current: 35, message: `Fetched ${etsyListings.length} Etsy listings` });
   const normalizedListings = etsyListings.map(normalizeEtsyListing);
   const existingIds = await input.listingsRepository.getExistingEtsyListingIds(
     normalizedListings.map((listing) => listing.etsyListingId)
   );
-  await input.onProgress?.({ current: 45, message: "Comparing known and new listings" });
+  await reportProgress({ current: 45, message: "Comparing known and new listings" });
 
   const known = existingIds.size;
+  const knownListings = normalizedListings.filter((listing) => existingIds.has(listing.etsyListingId));
   const newListings = sortListingsForQueue(normalizedListings.filter(
     (listing) => !existingIds.has(listing.etsyListingId)
   ));
-  await input.onProgress?.({ current: 50, message: "Saving Etsy listings" });
-  await input.listingsRepository.upsertKnownListings(normalizedListings);
-  const created = newListings.length;
+  await reportProgress({ current: 50, message: "Saving Etsy listings" });
+  await input.listingsRepository.upsertKnownListings(knownListings);
+  let created = 0;
   let queued = 0;
   let instagramQueued = 0;
   const errors: SyncEtsyListingsResult["errors"] = [];
@@ -94,10 +105,12 @@ export async function syncEtsyListingsWithDependencies(input: {
     const queueProgress = newListings.length === 0
       ? 95
       : 55 + Math.round((index / newListings.length) * 40);
-    await input.onProgress?.({
+    await reportProgress({
       current: queueProgress,
       message: `Queueing new listing ${index + 1} of ${newListings.length}`
     });
+    const errorCountBeforeQueueing = errors.length;
+
     if (input.queueRepository && input.boardId) {
       try {
         const queueResult = await input.queueRepository.enqueueListing(
@@ -130,7 +143,7 @@ export async function syncEtsyListingsWithDependencies(input: {
         let captionSource: "rule" | "ai" | undefined;
 
         if (input.instagramCaptionGenerator) {
-          await input.onProgress?.({
+          await reportProgress({
             current: queueProgress,
             message: `Generating AI caption for new listing ${index + 1} of ${newListings.length}`
           });
@@ -163,9 +176,33 @@ export async function syncEtsyListingsWithDependencies(input: {
         });
       }
     }
+
+    if (errors.length === errorCountBeforeQueueing) {
+      try {
+        await input.listingsRepository.upsertKnownListing(listing);
+        created += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown listing save error";
+        errors.push({ etsyListingId: listing.etsyListingId, message });
+        logger.error("SYNC", "New listing could not be marked as known", {
+          etsyListingId: listing.etsyListingId,
+          message
+        });
+      }
+    }
   }
 
-  await input.onProgress?.({ current: 98, message: "Finalizing Etsy sync" });
+  if (queued > 0 && input.queueRepository?.rebuildPendingSchedule) {
+    await reportProgress({ current: 96, message: "Prioritizing the Pinterest queue" });
+    await input.queueRepository.rebuildPendingSchedule();
+  }
+
+  if (instagramQueued > 0 && input.instagramQueueRepository?.rebuildPendingSchedule) {
+    await reportProgress({ current: 97, message: "Prioritizing the Instagram queue" });
+    await input.instagramQueueRepository.rebuildPendingSchedule();
+  }
+
+  await reportProgress({ current: 98, message: "Finalizing Etsy sync" });
 
   return {
     mode: "sync",
