@@ -297,12 +297,11 @@ export async function updateInstagramQueueItemAction(formData: FormData) {
   await requireAdminSession();
   const id = String(formData.get("id") ?? "");
   const caption = String(formData.get("caption") ?? "").trim();
-  const rawPostMode = String(formData.get("postMode") ?? "single");
-  const postMode: InstagramPostMode = rawPostMode === "carousel" ? "carousel" : "single";
+  const postMode: InstagramPostMode = "single";
   const selectedMediaUrls = formData
     .getAll("selectedMediaUrls")
     .filter((url): url is string => typeof url === "string")
-    .slice(0, 10);
+    .slice(0, 1);
 
   if (id && caption) {
     await createInstagramQueueRepository().updateDetails({

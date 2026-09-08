@@ -116,10 +116,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             </label>
             <label>
               Default post mode
-              <select name="instagramPostMode" defaultValue={settings.instagramPostMode}>
-                <option value="single">Single image</option>
-                <option value="carousel">Carousel when possible</option>
-              </select>
+              <input name="instagramPostMode" value="single" readOnly />
             </label>
             <label>
               Meta API version

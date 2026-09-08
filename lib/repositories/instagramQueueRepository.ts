@@ -2,7 +2,6 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { paginateQueue } from "@/lib/queue/pagination";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import {
-  getInstagramPostMode,
   resolveAvailableInstagramMediaUrls,
   resolveInstagramMediaUrls,
   selectInstagramMediaUrls
@@ -61,15 +60,6 @@ export type InstagramQueueRepository = {
 
 const scheduleUpdateBatchSize = 25;
 
-async function resolvePostMode(listing: NormalizedEtsyListing): Promise<InstagramPostMode> {
-  const configuredMode = await getInstagramPostMode();
-  const mediaUrls = resolveInstagramMediaUrls(listing, configuredMode);
-
-  return configuredMode === "carousel" && mediaUrls.length > 1
-    ? "carousel"
-    : "single";
-}
-
 export function createInstagramQueueRepository(): InstagramQueueRepository {
   const supabase = getSupabaseAdmin();
 
@@ -88,11 +78,9 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
     },
 
     async enqueueListing(listing, options) {
-      const postMode = await resolvePostMode(listing);
+      const postMode: InstagramPostMode = "single";
       const availableMediaUrls = resolveAvailableInstagramMediaUrls(listing);
-      const mediaUrls = postMode === "carousel"
-        ? selectInstagramMediaUrls(availableMediaUrls, postMode)
-        : resolveInstagramMediaUrls(listing, postMode);
+      const mediaUrls = resolveInstagramMediaUrls(listing);
       const { error } = await supabase.from("instagram_queue").insert({
         etsy_listing_id: listing.etsyListingId,
         etsy_image_id: listing.etsyImageId,
@@ -141,15 +129,15 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         availableMediaUrls.includes(url)
       ) ?? [];
       const mediaUrls = requestedMediaUrls.length > 0
-        ? selectInstagramMediaUrls(requestedMediaUrls, input.postMode, requestedMediaUrls.length)
-        : selectInstagramMediaUrls(availableMediaUrls, input.postMode);
+        ? selectInstagramMediaUrls(requestedMediaUrls)
+        : selectInstagramMediaUrls(availableMediaUrls);
       const { error } = await supabase
         .from("instagram_queue")
         .update({
           caption: input.caption.slice(0, 2200),
           caption_source: input.captionSource ?? "manual",
           caption_generated_at: input.captionSource === "ai" ? new Date().toISOString() : null,
-          post_mode: input.postMode,
+          post_mode: "single",
           media_urls: mediaUrls,
           available_media_urls: availableMediaUrls,
           ...(input.scheduledAt ? { scheduled_at: input.scheduledAt, schedule_locked: true } : {})

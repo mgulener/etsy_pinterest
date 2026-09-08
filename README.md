@@ -276,10 +276,10 @@ INSTAGRAM_POST_MODE=single
 Publishes one image feed post from the first Etsy image.
 
 ```text
-INSTAGRAM_POST_MODE=carousel
+INSTAGRAM_POST_MODE=single
 ```
 
-Publishes one carousel post from the first eligible Etsy image URLs, capped by `INSTAGRAM_CAROUSEL_MAX_ITEMS`. The invariant still holds: one `etsy_listing_id` gets at most one automatic Instagram publication.
+Publishes one single-image post from the selected Etsy image URL. The invariant still holds: one `etsy_listing_id` gets at most one automatic Instagram publication.
 
 Token notes:
 

@@ -3,7 +3,6 @@ import { getCurrentUserSettings, getSettingsForUser, requireSetting } from "@/li
 import type {
   CreateInstagramPostResult,
   InstagramContainerStatus,
-  PublishInstagramCarouselInput,
   PublishInstagramImageInput
 } from "./types";
 import { InstagramApiError } from "./types";
@@ -68,9 +67,12 @@ function classifyInstagramError(
     status === 429 ||
     lowerBody.includes("rate limit") ||
     lowerBody.includes("application request limit") ||
+    lowerBody.includes("media creation limit exceeded") ||
     lowerBody.includes("api access blocked") ||
     lowerBody.includes("action is blocked") ||
-    lowerBody.includes("\"code\":4")
+    lowerBody.includes("\"code\":4") ||
+    lowerBody.includes("\"code\":9") ||
+    lowerBody.includes("\"error_subcode\":2207069")
   ) {
     return new InstagramApiError(
       `Instagram rate limit hit while calling ${operation}: ${status} ${body}`,
@@ -209,35 +211,6 @@ export async function createImageContainer(input: PublishInstagramImageInput) {
   );
 }
 
-export async function createCarouselItem(imageUrl: string, userId?: string | null) {
-  return instagramPost<InstagramContainerResponse>(
-    `/${(await getInstagramApiSettings(userId)).accountId}/media`,
-    await buildTokenParams({
-      image_url: imageUrl,
-      is_carousel_item: "true"
-    }, userId),
-    "container",
-    userId
-  );
-}
-
-export async function createCarouselContainer(input: {
-  creationIds: string[];
-  caption: string;
-  userId?: string | null;
-}) {
-  return instagramPost<InstagramContainerResponse>(
-    `/${(await getInstagramApiSettings(input.userId)).accountId}/media`,
-    await buildTokenParams({
-      media_type: "CAROUSEL",
-      children: input.creationIds.join(","),
-      caption: input.caption.slice(0, 2200)
-    }, input.userId),
-    "container",
-    input.userId
-  );
-}
-
 export async function getContainerStatus(creationId: string, userId?: string | null) {
   return instagramGet<InstagramContainerStatusResponse>(
     `/${creationId}`,
@@ -322,62 +295,13 @@ export async function publishInstagramImage(
   }
 }
 
-export async function publishInstagramCarousel(
-  input: PublishInstagramCarouselInput
-): Promise<CreateInstagramPostResult> {
-  if (input.imageUrls.length < 2) {
-    return publishInstagramImage({
-      imageUrl: input.imageUrls[0] ?? "",
-      caption: input.caption,
-      userId: input.userId
-    });
-  }
-
-  const childContainers: string[] = [];
-
-  for (const imageUrl of input.imageUrls) {
-    const child = await createCarouselItem(imageUrl, input.userId);
-    await waitForContainer(child.id, input.userId);
-    childContainers.push(child.id);
-  }
-
-  const carouselContainer = await createCarouselContainer({
-    creationIds: childContainers,
-    caption: input.caption,
-    userId: input.userId
-  });
-  await waitForContainer(carouselContainer.id, input.userId);
-  const published = await publishMedia(carouselContainer.id, input.userId);
-
-  try {
-    const media = await getMedia(published.id, input.userId);
-    return {
-      id: published.id,
-      creationId: carouselContainer.id,
-      mediaType: "CAROUSEL",
-      permalink: media.permalink
-    };
-  } catch {
-    return {
-      id: published.id,
-      creationId: carouselContainer.id,
-      mediaType: "CAROUSEL"
-    };
-  }
-}
-
 // Preparation creates containers only; the durable publisher owns media_publish.
 export async function prepareInstagramContainer(input: import("./types").CreateInstagramPostInput) {
-  if (input.mode === "carousel" && input.imageUrls && input.imageUrls.length > 1) {
-    const children: string[] = [];
-    for (const url of input.imageUrls) {
-      const child = await createCarouselItem(url, input.userId);
-      await waitForContainer(child.id, input.userId);
-      children.push(child.id);
-    }
-    return (await createCarouselContainer({ creationIds: children, caption: input.caption, userId: input.userId })).id;
-  }
-  return (await createImageContainer(input)).id;
+  return (await createImageContainer({
+    imageUrl: input.imageUrls?.[0] ?? input.imageUrl,
+    caption: input.caption,
+    userId: input.userId
+  })).id;
 }
 
 export async function findOwnedInstagramMedia(mediaId: string, userId: string) {

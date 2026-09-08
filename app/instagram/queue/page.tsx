@@ -278,7 +278,6 @@ export default async function InstagramQueuePage({ searchParams }: PageProps) {
                       <CaptionModalEditor
                         id={item.id}
                         caption={item.caption}
-                        postMode={item.post_mode}
                         mediaUrls={item.media_urls}
                         availableMediaUrls={item.available_media_urls}
                       />

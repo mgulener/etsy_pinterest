@@ -409,6 +409,7 @@ test("Etsy sync runs as a durable background job", () => {
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0012_add_queue_caption_source.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0013_add_queue_schedule_lock.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0014_add_instagram_publish_job_type.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0017_instagram_single_image_only.sql")), true);
 });
 
 test("queue action UI uses icons and enabled platform settings", () => {
@@ -438,6 +439,8 @@ test("queue action UI uses icons and enabled platform settings", () => {
   assert.match(instagramQueuePage, /instagram-ai-captions\/latest/);
   assert.match(captionModalEditor, /fetch\("\/api\/instagram\/caption"/);
   assert.match(captionModalEditor, /value=\{draftCaption\}/);
+  assert.match(captionModalEditor, /name="postMode" value="single"/);
+  assert.doesNotMatch(captionModalEditor, /<option value="carousel"/);
   assert.doesNotMatch(captionModalEditor, /formAction=\{regenerateInstagramCaptionAction\}/);
   assert.match(instagramCaptionRoute, /NextResponse\.json\(\{ caption \}\)/);
   assert.equal(existsSync(join(projectRoot, "app/api/jobs/instagram-ai-captions/latest/route.ts")), true);
@@ -1081,15 +1084,13 @@ test("Instagram image container success publishes media", async () => {
   }
 });
 
-test("Instagram carousel mode creates child containers then publishes carousel", async () => {
+test("Instagram carousel input is forced to a single-image post", async () => {
   process.env.INSTAGRAM_ACCESS_TOKEN = "ig-token";
   process.env.INSTAGRAM_ACCOUNT_ID = "ig-account";
   process.env.META_API_VERSION = "v25.0";
   process.env.INSTAGRAM_CONTAINER_POLL_INTERVAL_MS = "1";
   const originalFetch = globalThis.fetch;
   const postedBodies: string[] = [];
-  let mediaCallCount = 0;
-
   globalThis.fetch = async (request, init) => {
     const url = new URL(String(request));
 
@@ -1098,33 +1099,19 @@ test("Instagram carousel mode creates child containers then publishes carousel",
     }
 
     if (url.pathname.endsWith("/ig-account/media")) {
-      mediaCallCount += 1;
-
-      if (mediaCallCount === 1) {
-        return Response.json({ id: "child-1" });
-      }
-
-      if (mediaCallCount === 2) {
-        return Response.json({ id: "child-2" });
-      }
-
-      return Response.json({ id: "carousel-container" });
+      return Response.json({ id: "image-container" });
     }
 
-    if (
-      url.pathname.endsWith("/child-1") ||
-      url.pathname.endsWith("/child-2") ||
-      url.pathname.endsWith("/carousel-container")
-    ) {
+    if (url.pathname.endsWith("/image-container")) {
       return Response.json({ status_code: "FINISHED" });
     }
 
     if (url.pathname.endsWith("/ig-account/media_publish")) {
-      return Response.json({ id: "carousel-media" });
+      return Response.json({ id: "image-media" });
     }
 
-    if (url.pathname.endsWith("/carousel-media")) {
-      return Response.json({ permalink: "https://instagram.test/p/carousel" });
+    if (url.pathname.endsWith("/image-media")) {
+      return Response.json({ permalink: "https://instagram.test/p/image" });
     }
 
     return new Response("not found", { status: 404 });
@@ -1138,13 +1125,13 @@ test("Instagram carousel mode creates child containers then publishes carousel",
       mode: "carousel"
     });
 
-    assert.equal(result.id, "carousel-media");
-    assert.equal(result.creationId, "carousel-container");
-    assert.equal(result.mediaType, "CAROUSEL");
-    assert.equal(postedBodies[0]?.includes("is_carousel_item=true"), true);
-    assert.equal(postedBodies[1]?.includes("is_carousel_item=true"), true);
-    assert.equal(postedBodies[2]?.includes("media_type=CAROUSEL"), true);
-    assert.equal(postedBodies[2]?.includes("children=child-1%2Cchild-2"), true);
+    assert.equal(result.id, "image-media");
+    assert.equal(result.creationId, "image-container");
+    assert.equal(result.mediaType, "IMAGE");
+    assert.equal(postedBodies.length, 2);
+    assert.equal(postedBodies[0]?.includes("image_url=https%3A%2F%2Fimg.test%2F101-1.jpg"), true);
+    assert.equal(postedBodies.some((body) => body.includes("is_carousel_item=true")), false);
+    assert.equal(postedBodies.some((body) => body.includes("media_type=CAROUSEL")), false);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1175,6 +1162,31 @@ test("Instagram auth error fails without retrying", async () => {
   assert.equal(queueRepository.items[0]?.attempt_count, 1);
 });
 
+test("Instagram rate limits retry without consuming an item attempt", async () => {
+  const queueRepository = new MemoryInstagramPublisherQueueRepository([
+    makeInstagramQueueItem({ id: "igq1", etsy_listing_id: 101, attempt_count: 0 })
+  ]);
+  const postsRepository = new MemoryInstagramPostsRepository();
+
+  const result = await publishInstagramPostsWithDependencies({
+    queueRepository,
+    postsRepository,
+    instagram: {
+      createPost: async () => {
+        throw new InstagramApiError("Media Creation Limit Exceeded", "rate_limit", true);
+      }
+    },
+    maxPostsPerRun: 1,
+    maxRetries: 3,
+    dryRun: false
+  });
+
+  assert.equal(result.retried, 1);
+  assert.equal(result.failed, 0);
+  assert.equal(queueRepository.items[0]?.status, "pending");
+  assert.equal(queueRepository.items[0]?.attempt_count, 0);
+});
+
 test("Instagram API access blocked is retryable", async () => {
   process.env.INSTAGRAM_ACCESS_TOKEN = "ig-token";
   process.env.INSTAGRAM_ACCOUNT_ID = "ig-account";
@@ -1188,6 +1200,45 @@ test("Instagram API access blocked is retryable", async () => {
           message: "API access blocked.",
           type: "OAuthException",
           code: 200
+        }
+      },
+      { status: 400 }
+    );
+
+  try {
+    await assert.rejects(
+      () => createInstagramPost({
+        imageUrl: "https://img.test/101.jpg",
+        caption: "Caption",
+        mode: "single"
+      }),
+      (error) => {
+        assert.equal(error instanceof InstagramApiError, true);
+        assert.equal((error as InstagramApiError).type, "rate_limit");
+        assert.equal((error as InstagramApiError).retryable, true);
+        return true;
+      }
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Instagram media creation limit is classified as retryable", async () => {
+  process.env.INSTAGRAM_ACCESS_TOKEN = "ig-token";
+  process.env.INSTAGRAM_ACCOUNT_ID = "ig-account";
+  process.env.META_API_VERSION = "v25.0";
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = async () =>
+    Response.json(
+      {
+        error: {
+          message: "User is performing too many actions",
+          type: "OAuthException",
+          code: 9,
+          error_subcode: 2207069,
+          error_user_title: "Media Creation Limit Exceeded"
         }
       },
       { status: 400 }

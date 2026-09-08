@@ -36,6 +36,10 @@ function shouldRetryError(error: unknown) {
   return error instanceof InstagramApiError ? error.retryable : true;
 }
 
+function shouldCountAttempt(error: unknown) {
+  return !(error instanceof InstagramApiError && error.type === "rate_limit");
+}
+
 const STALE_PROCESSING_MS = 10 * 60_000;
 
 export async function publishInstagramPostsWithDependencies(input: {
@@ -115,7 +119,12 @@ export async function publishInstagramPostsWithDependencies(input: {
         continue;
       }
 
-      if (!item.image_url) {
+      const selectedMediaUrls = Array.isArray(item.media_urls)
+        ? item.media_urls.filter((url): url is string => typeof url === "string")
+        : [];
+      const imageUrl = selectedMediaUrls[0] ?? item.image_url;
+
+      if (!imageUrl) {
         throw new Error("Queue item is missing image_url");
       }
 
@@ -132,12 +141,10 @@ export async function publishInstagramPostsWithDependencies(input: {
 
       await input.onProgress?.({ current: index, total: progressTotal, message: `Publishing Instagram post: ${item.title.slice(0, 80)}` });
       const post = await input.instagram.createPost({
-        imageUrl: item.image_url,
-        imageUrls: Array.isArray(item.media_urls)
-          ? item.media_urls.filter((url): url is string => typeof url === "string")
-          : [],
+        imageUrl,
+        imageUrls: [imageUrl],
         caption: item.caption,
-        mode: item.post_mode
+        mode: "single"
       }, item.etsy_listing_id);
       remotePostCreated = true;
 
@@ -164,7 +171,7 @@ export async function publishInstagramPostsWithDependencies(input: {
       });
     } catch (error) {
       const message = toErrorMessage(error);
-      const nextAttemptCount = item.attempt_count + 1;
+      const nextAttemptCount = item.attempt_count + (shouldCountAttempt(error) ? 1 : 0);
       errors.push({ etsyListingId: item.etsy_listing_id, message });
 
       if (remotePostCreated || error instanceof InstagramVerificationRequired) {

@@ -22,7 +22,7 @@ export function createInstagramPublishAttemptsRepository(): PublishAttemptStore 
       if (existing) return { attempt: existing, created: false };
       const { data, error } = await db.from("instagram_publish_attempts").insert({
         etsy_listing_id: listingId, account_id: accountId, caption: input.caption,
-        media_type: input.mode === "carousel" && (input.imageUrls?.length ?? 0) > 1 ? "CAROUSEL" : "IMAGE"
+        media_type: "IMAGE"
       }).select("*").single();
       if (error?.code === "23505") {
         const winner = await findActive(listingId, accountId);

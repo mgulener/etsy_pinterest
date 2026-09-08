@@ -49,12 +49,6 @@ export type PublishInstagramImageInput = {
   userId?: string | null;
 };
 
-export type PublishInstagramCarouselInput = {
-  imageUrls: string[];
-  caption: string;
-  userId?: string | null;
-};
-
 export type InstagramMediaUrlInput = Pick<
   NormalizedEtsyListing,
   "imageUrl" | "imageUrls"

@@ -25,7 +25,7 @@ export async function saveSettingsAction(formData: FormData) {
     instagramAccessToken: String(formData.get("instagramAccessToken") ?? ""),
     instagramAccountId: String(formData.get("instagramAccountId") ?? ""),
     instagramUserId: String(formData.get("instagramUserId") ?? ""),
-    instagramPostMode: formData.get("instagramPostMode") === "carousel" ? "carousel" : "single",
+    instagramPostMode: "single",
     metaApiVersion: String(formData.get("metaApiVersion") ?? ""),
     aiCaptionsEnabled: formData.get("aiCaptionsEnabled") === "on",
     openaiApiKey: String(formData.get("openaiApiKey") ?? ""),

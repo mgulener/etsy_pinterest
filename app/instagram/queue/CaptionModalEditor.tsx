@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { updateInstagramQueueItemAction } from "@/app/actions/admin";
-import type { InstagramPostMode } from "@/lib/instagram/types";
 
 function getStringArray(value: unknown) {
   return Array.isArray(value)
@@ -34,10 +33,10 @@ function AiIcon() {
   );
 }
 
-function resolveInitialUrls(currentUrls: string[], selectableUrls: string[], postMode: InstagramPostMode) {
+function resolveInitialUrls(currentUrls: string[], selectableUrls: string[]) {
   const initialUrls = currentUrls.length > 0
-    ? currentUrls.filter((url) => selectableUrls.includes(url)).slice(0, 10)
-    : selectableUrls.slice(0, postMode === "carousel" ? 5 : 1);
+    ? currentUrls.filter((url) => selectableUrls.includes(url)).slice(0, 1)
+    : selectableUrls.slice(0, 1);
 
   return initialUrls.length > 0 ? initialUrls : selectableUrls.slice(0, 1);
 }
@@ -45,19 +44,16 @@ function resolveInitialUrls(currentUrls: string[], selectableUrls: string[], pos
 export function CaptionModalEditor({
   id,
   caption,
-  postMode,
   mediaUrls,
   availableMediaUrls
 }: {
   id: string;
   caption: string;
-  postMode: InstagramPostMode;
   mediaUrls: unknown;
   availableMediaUrls: unknown;
 }) {
   const [open, setOpen] = useState(false);
   const [draftCaption, setDraftCaption] = useState(caption);
-  const [selectedMode, setSelectedMode] = useState<InstagramPostMode>(postMode);
   const [isPending, startTransition] = useTransition();
   const [isAiPending, setIsAiPending] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -66,12 +62,11 @@ export function CaptionModalEditor({
   const selectableUrls = availableUrls.length > 0
     ? availableUrls.slice(0, 10)
     : currentUrls.slice(0, 10);
-  const [selectedUrls, setSelectedUrls] = useState<string[]>(() => resolveInitialUrls(currentUrls, selectableUrls, postMode));
+  const [selectedUrls, setSelectedUrls] = useState<string[]>(() => resolveInitialUrls(currentUrls, selectableUrls));
 
   function openEditor() {
     setDraftCaption(caption);
-    setSelectedMode(postMode);
-    setSelectedUrls(resolveInitialUrls(currentUrls, selectableUrls, postMode));
+    setSelectedUrls(resolveInitialUrls(currentUrls, selectableUrls));
     setAiError(null);
     setOpen(true);
   }
@@ -127,7 +122,7 @@ export function CaptionModalEditor({
                 <div className="modal-header">
                   <div>
                     <h2 className="modal-title fs-5">Edit Instagram Caption</h2>
-                    <p className="text-muted mb-0 small">Review the caption, media mode, and selected images before publishing.</p>
+                    <p className="text-muted mb-0 small">Review the caption and select the image to publish.</p>
                   </div>
                   <button
                     type="button"
@@ -139,6 +134,7 @@ export function CaptionModalEditor({
                 <form action={save}>
                   <div className="modal-body">
                     <input type="hidden" name="id" value={id} />
+                    <input type="hidden" name="postMode" value="single" />
                     {aiError ? <div className="alert alert-danger py-2">{aiError}</div> : null}
                     <textarea
                       className="form-control"
@@ -149,37 +145,12 @@ export function CaptionModalEditor({
                       rows={8}
                       autoFocus
                     />
-                    <div className="mt-3">
-                      <label className="form-label" htmlFor={`post-mode-${id}`}>Post type</label>
-                      <select
-                        id={`post-mode-${id}`}
-                        className="form-select"
-                        name="postMode"
-                        value={selectedMode}
-                        onChange={(event) => {
-                          const nextMode = event.target.value === "carousel" ? "carousel" : "single";
-                          setSelectedMode(nextMode);
-                          setSelectedUrls((urls) => {
-                            if (nextMode === "single") {
-                              return urls.length > 0 ? urls.slice(0, 1) : selectableUrls.slice(0, 1);
-                            }
-
-                            return urls.length > 0 ? urls.slice(0, 10) : selectableUrls.slice(0, 5);
-                          });
-                        }}
-                      >
-                        <option value="single">Single</option>
-                        <option value="carousel" disabled={selectableUrls.length < 2}>
-                          Carousel
-                        </option>
-                      </select>
-                    </div>
                     {selectableUrls.length > 0 ? (
                       <div className="mt-4">
                         <div className="d-flex align-items-center justify-content-between gap-3 mb-2">
                           <label className="form-label mb-0">Images</label>
                           <span className="text-muted small">
-                            {selectedUrls.length} selected{selectedMode === "carousel" ? " / 10 max" : ""}
+                            {selectedUrls.length} selected
                           </span>
                         </div>
                         <div className="d-flex flex-wrap gap-2">
@@ -195,21 +166,11 @@ export function CaptionModalEditor({
                               >
                                 <input
                                   className="form-check-input image-picker-control position-absolute top-0 start-0 m-1"
-                                  type={selectedMode === "carousel" ? "checkbox" : "radio"}
+                                  type="radio"
                                   name="selectedMediaPicker"
                                   checked={checked}
                                   onChange={() => {
-                                    setSelectedUrls((urls) => {
-                                      if (selectedMode === "single") {
-                                        return [url];
-                                      }
-
-                                      if (urls.includes(url)) {
-                                        return urls.length > 1 ? urls.filter((item) => item !== url) : urls;
-                                      }
-
-                                      return urls.length >= 10 ? urls : [...urls, url];
-                                    });
+                                    setSelectedUrls([url]);
                                   }}
                                 />
                                 <img

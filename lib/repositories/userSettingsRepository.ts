@@ -85,7 +85,7 @@ function fromRow(row: SettingsRow | null): UserSettings {
     instagramAccessToken: row?.instagram_access_token ?? process.env.INSTAGRAM_ACCESS_TOKEN ?? null,
     instagramAccountId: row?.instagram_account_id ?? process.env.INSTAGRAM_ACCOUNT_ID ?? null,
     instagramUserId: row?.instagram_user_id ?? process.env.INSTAGRAM_USER_ID ?? null,
-    instagramPostMode: row?.instagram_post_mode ?? (process.env.INSTAGRAM_POST_MODE === "carousel" ? "carousel" : "single"),
+    instagramPostMode: "single",
     metaApiVersion: row?.meta_api_version ?? process.env.META_API_VERSION ?? process.env.INSTAGRAM_API_VERSION ?? null,
     aiCaptionsEnabled: row?.ai_captions_enabled ?? process.env.AI_CAPTIONS_ENABLED === "true",
     openaiApiKey: row?.openai_api_key ?? process.env.OPENAI_API_KEY ?? null,

@@ -21,7 +21,7 @@ const integrations = [
   {
     name: "Instagram",
     mark: "I",
-    description: "Creates reviewed single-image and carousel posts for the connected account."
+    description: "Creates reviewed single-image posts for the connected account."
   }
 ];
 
