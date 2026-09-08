@@ -3,6 +3,7 @@ import { getInstagramAutomationUserId } from "@/lib/repositories/userSettingsRep
 import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   const unauthorized = validateCronRequest(request);
