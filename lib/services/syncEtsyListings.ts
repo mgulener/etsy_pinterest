@@ -7,7 +7,7 @@ import { createListingsRepository } from "@/lib/repositories/listingsRepository"
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { generateInstagramCaptionWithAI } from "@/lib/instagram/aiCaption";
-import { buildScheduledAt, sortListingsForQueue } from "@/lib/queue/scheduling";
+import { buildScheduledAt, getNextScheduleStart, sortListingsForQueue } from "@/lib/queue/scheduling";
 import { logger } from "@/lib/utils/logger";
 import type {
   BootstrapSettingsRepository,
@@ -98,7 +98,7 @@ export async function syncEtsyListingsWithDependencies(input: {
     new: newListings.length
   });
 
-  const scheduleStart = new Date();
+  const scheduleStart = getNextScheduleStart();
 
   for (const [index, listing] of newListings.entries()) {
     const scheduledAt = buildScheduledAt(index, undefined, scheduleStart);

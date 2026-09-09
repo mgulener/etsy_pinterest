@@ -1,7 +1,12 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { paginateQueue } from "@/lib/queue/pagination";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
-import { buildScheduledAt, DEFAULT_QUEUE_INTERVAL_MINUTES, sortQueueRowsForPublishing } from "@/lib/queue/scheduling";
+import {
+  buildScheduledAt,
+  DEFAULT_QUEUE_INTERVAL_MINUTES,
+  getNextScheduleStart,
+  sortQueueRowsForPublishing
+} from "@/lib/queue/scheduling";
 import type { PinQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 
 export type QueuePageResult = {
@@ -117,7 +122,7 @@ export function createPinQueueRepository(): PinQueueRepository {
       }
 
       const rows = sortQueueRowsForPublishing(data);
-      const startDate = new Date();
+      const startDate = getNextScheduleStart(intervalMinutes);
 
       let updateError: { message: string } | null = null;
 

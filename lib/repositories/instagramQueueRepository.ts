@@ -10,6 +10,7 @@ import { buildInstagramCaption } from "@/lib/instagram/caption";
 import {
   buildScheduledAt,
   DEFAULT_QUEUE_INTERVAL_MINUTES,
+  getNextScheduleStart,
   sortQueueRowsForPublishing,
   type QueueSortableItem
 } from "@/lib/queue/scheduling";
@@ -186,7 +187,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
 
       const rows = sortQueueRowsForPublishing(data);
-      const startDate = new Date();
+      const startDate = getNextScheduleStart(intervalMinutes);
 
       let updateError: { message: string } | null = null;
 
