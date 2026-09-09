@@ -62,11 +62,11 @@ test("queue rows are ordered by event month and then creation date", () => {
   ]);
 });
 
-test("default schedule interval is five minutes", () => {
+test("default schedule interval is fifteen minutes", () => {
   const start = new Date("2026-09-09T09:00:00+03:00");
 
-  assert.equal(DEFAULT_QUEUE_INTERVAL_MINUTES, 5);
-  assert.equal(buildScheduledAt(3, undefined, start), "2026-09-09T06:15:00.000Z");
+  assert.equal(DEFAULT_QUEUE_INTERVAL_MINUTES, 15);
+  assert.equal(buildScheduledAt(3, undefined, start), "2026-09-09T06:45:00.000Z");
 });
 
 test("new schedules start on the next clean interval boundary", () => {
