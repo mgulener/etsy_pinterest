@@ -152,7 +152,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <div className="settings-grid">
             <label>
               Etsy keystring and shared secret
-              <input name="etsyApiKey" defaultValue={value(settings.etsyApiKey)} placeholder="keystring:shared_secret" />
+              <input
+                name="etsyApiKey"
+                type="password"
+                autoComplete="off"
+                placeholder={settings.etsyApiKey ? "Etsy credentials saved; leave blank to keep them" : "keystring:shared_secret"}
+              />
             </label>
             <label>
               Etsy redirect URI
@@ -188,7 +193,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             </label>
             <label>
               Pinterest App secret
-              <input name="pinterestAppSecret" type="password" defaultValue={value(settings.pinterestAppSecret)} placeholder="Pinterest App secret" />
+              <input
+                name="pinterestAppSecret"
+                type="password"
+                autoComplete="off"
+                placeholder={settings.pinterestAppSecret ? "Pinterest secret saved; leave blank to keep it" : "Pinterest App secret"}
+              />
             </label>
             <label>
               Pinterest redirect URI
@@ -279,7 +289,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             </label>
             <label>
               Access token
-              <input name="instagramAccessToken" defaultValue={value(settings.instagramAccessToken)} placeholder="Instagram access token" />
+              <input
+                name="instagramAccessToken"
+                type="password"
+                autoComplete="off"
+                placeholder={settings.instagramAccessToken ? "Instagram token saved; leave blank to keep it" : "Instagram access token"}
+              />
             </label>
             <label>
               Instagram account ID
@@ -312,7 +327,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             </label>
             <label>
               OpenAI API key
-              <input name="openaiApiKey" defaultValue={value(settings.openaiApiKey)} placeholder="sk-..." />
+              <input
+                name="openaiApiKey"
+                type="password"
+                autoComplete="off"
+                placeholder={settings.openaiApiKey ? "OpenAI key saved; leave blank to keep it" : "sk-..."}
+              />
             </label>
             <label>
               OpenAI model

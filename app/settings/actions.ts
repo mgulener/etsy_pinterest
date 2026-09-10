@@ -21,6 +21,14 @@ function parsePositiveInteger(value: FormDataEntryValue | null, fallback: number
   return Number.isFinite(numberValue) && numberValue > 0 ? Math.floor(numberValue) : fallback;
 }
 
+function preserveSecret(
+  formData: FormData,
+  fieldName: string,
+  currentValue: string | null
+) {
+  return String(formData.get(fieldName) ?? "").trim() || currentValue;
+}
+
 export async function saveSettingsAction(formData: FormData) {
   const session = await requireAdminSession();
   const currentSettings = await getSettingsForUser(session.userId);
@@ -28,7 +36,7 @@ export async function saveSettingsAction(formData: FormData) {
   const clearSandboxToken = formData.get("clearPinterestSandboxAccessToken") === "on";
 
   await saveUserSettings(session.userId, {
-    etsyApiKey: String(formData.get("etsyApiKey") ?? ""),
+    etsyApiKey: preserveSecret(formData, "etsyApiKey", currentSettings.etsyApiKey),
     etsyRedirectUri: String(formData.get("etsyRedirectUri") ?? ""),
     etsyShopId: String(formData.get("etsyShopId") ?? ""),
     pinterestEnabled: formData.get("pinterestEnabled") === "on",
@@ -36,7 +44,11 @@ export async function saveSettingsAction(formData: FormData) {
       ? "sandbox"
       : "production",
     pinterestAppId: String(formData.get("pinterestAppId") ?? ""),
-    pinterestAppSecret: String(formData.get("pinterestAppSecret") ?? ""),
+    pinterestAppSecret: preserveSecret(
+      formData,
+      "pinterestAppSecret",
+      currentSettings.pinterestAppSecret
+    ),
     pinterestRedirectUri: String(formData.get("pinterestRedirectUri") ?? ""),
     pinterestBoardId: String(formData.get("pinterestBoardId") ?? ""),
     pinterestSandboxAccessToken: clearSandboxToken
@@ -44,13 +56,17 @@ export async function saveSettingsAction(formData: FormData) {
       : sandboxTokenInput || currentSettings.pinterestSandboxAccessToken,
     pinterestSandboxBoardId: String(formData.get("pinterestSandboxBoardId") ?? ""),
     instagramEnabled: formData.get("instagramEnabled") === "on",
-    instagramAccessToken: String(formData.get("instagramAccessToken") ?? ""),
+    instagramAccessToken: preserveSecret(
+      formData,
+      "instagramAccessToken",
+      currentSettings.instagramAccessToken
+    ),
     instagramAccountId: String(formData.get("instagramAccountId") ?? ""),
     instagramUserId: String(formData.get("instagramUserId") ?? ""),
     instagramPostMode: "single",
     metaApiVersion: String(formData.get("metaApiVersion") ?? ""),
     aiCaptionsEnabled: formData.get("aiCaptionsEnabled") === "on",
-    openaiApiKey: String(formData.get("openaiApiKey") ?? ""),
+    openaiApiKey: preserveSecret(formData, "openaiApiKey", currentSettings.openaiApiKey),
     openaiModel: String(formData.get("openaiModel") ?? ""),
     dryRun: formData.get("dryRun") === "on",
     maxPinsPerRun: parsePositiveInteger(formData.get("maxPinsPerRun"), 10),
