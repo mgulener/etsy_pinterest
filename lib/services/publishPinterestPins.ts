@@ -28,6 +28,13 @@ function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown Pinterest publishing error";
 }
 
+export function isRetryablePinterestPublishError(message: string) {
+  return !(
+    /Apps with Trial access may not create Pins in production/i.test(message) ||
+    /["']?code["']?\s*:\s*29\b/i.test(message)
+  );
+}
+
 export async function publishPinterestPinsWithDependencies(input: {
   queueRepository: PublisherQueueRepository;
   postsRepository: PublisherPostsRepository;
@@ -116,7 +123,10 @@ export async function publishPinterestPinsWithDependencies(input: {
       const nextAttemptCount = item.attempt_count + 1;
       errors.push({ etsyListingId: item.etsy_listing_id, message });
 
-      if (nextAttemptCount >= input.maxRetries) {
+      if (
+        !isRetryablePinterestPublishError(message) ||
+        nextAttemptCount >= input.maxRetries
+      ) {
         await input.queueRepository.markFailed(item.id, message, nextAttemptCount);
         failed += 1;
         logger.error("QUEUE", "Queue item failed permanently", {

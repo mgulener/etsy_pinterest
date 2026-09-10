@@ -24,7 +24,10 @@ import { classifyPinterestListingsWithAI } from "../lib/pinterest/boardClassifie
 import { getSeasonalQueuePriority } from "../lib/queue/scheduling";
 import { InstagramApiError } from "../lib/instagram/types";
 import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
-import { publishPinterestPinsWithDependencies } from "../lib/services/publishPinterestPins";
+import {
+  isRetryablePinterestPublishError,
+  publishPinterestPinsWithDependencies
+} from "../lib/services/publishPinterestPins";
 import { syncEtsyListingsWithDependencies } from "../lib/services/syncEtsyListings";
 import {
   resolvePinterestBoardId,
@@ -1153,6 +1156,41 @@ test("Pinterest API failure does not create a pinterest post", async () => {
   assert.equal(queueRepository.items[0]?.status, "pending");
   assert.equal(queueRepository.items[0]?.attempt_count, 1);
   assert.equal(new Date(queueRepository.items[0]?.scheduled_at ?? 0).getTime() > new Date(initialScheduledAt).getTime(), true);
+});
+
+test("Pinterest Trial production denial is not retried", async () => {
+  assert.equal(
+    isRetryablePinterestPublishError(
+      'Pinterest API request failed: 403 {"code":29,"message":"Apps with Trial access may not create Pins in production"}'
+    ),
+    false
+  );
+  assert.equal(
+    isRetryablePinterestPublishError("Pinterest API request failed: 503 Service Unavailable"),
+    true
+  );
+
+  const queueRepository = new MemoryPublisherQueueRepository([
+    makeQueueItem({ id: "trial-q1", etsy_listing_id: 301 })
+  ]);
+  const result = await publishPinterestPinsWithDependencies({
+    queueRepository,
+    postsRepository: new MemoryPostsRepository(),
+    pinterest: {
+      createPin: async () => {
+        throw new Error(
+          'Pinterest API request failed: 403 {"code":29,"message":"Apps with Trial access may not create Pins in production"}'
+        );
+      }
+    },
+    maxPinsPerRun: 1,
+    maxRetries: 3,
+    dryRun: false
+  });
+
+  assert.equal(result.failed, 1);
+  assert.equal(result.retried, 0);
+  assert.equal(queueRepository.items[0]?.status, "failed");
 });
 
 test("Pinterest API success creates a pinterest post", async () => {
