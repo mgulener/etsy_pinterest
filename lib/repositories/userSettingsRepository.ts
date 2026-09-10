@@ -13,7 +13,14 @@ export type UserSettings = {
   etsyTokenScope: string | null;
   etsyTokenType: string | null;
   pinterestEnabled: boolean;
+  pinterestAppId: string | null;
+  pinterestAppSecret: string | null;
+  pinterestRedirectUri: string | null;
   pinterestAccessToken: string | null;
+  pinterestRefreshToken: string | null;
+  pinterestTokenExpiresAt: number | null;
+  pinterestTokenScope: string | null;
+  pinterestTokenType: string | null;
   pinterestBoardId: string | null;
   instagramEnabled: boolean;
   instagramAccessToken: string | null;
@@ -31,7 +38,19 @@ export type UserSettings = {
   maxInstagramRetries: number;
 };
 
-export type UserSettingsInput = Omit<UserSettings, "userId" | "etsyAccessToken" | "etsyRefreshToken" | "etsyTokenExpiresAt" | "etsyTokenScope" | "etsyTokenType">;
+export type UserSettingsInput = Omit<UserSettings,
+  | "userId"
+  | "etsyAccessToken"
+  | "etsyRefreshToken"
+  | "etsyTokenExpiresAt"
+  | "etsyTokenScope"
+  | "etsyTokenType"
+  | "pinterestAccessToken"
+  | "pinterestRefreshToken"
+  | "pinterestTokenExpiresAt"
+  | "pinterestTokenScope"
+  | "pinterestTokenType"
+>;
 
 type SettingsRow = {
   user_id: string;
@@ -44,7 +63,14 @@ type SettingsRow = {
   etsy_token_scope: string | null;
   etsy_token_type: string | null;
   pinterest_enabled: boolean;
+  pinterest_app_id: string | null;
+  pinterest_app_secret: string | null;
+  pinterest_redirect_uri: string | null;
   pinterest_access_token: string | null;
+  pinterest_refresh_token: string | null;
+  pinterest_token_expires_at: number | null;
+  pinterest_token_scope: string | null;
+  pinterest_token_type: string | null;
   pinterest_board_id: string | null;
   instagram_enabled: boolean;
   instagram_access_token: string | null;
@@ -79,7 +105,14 @@ function fromRow(row: SettingsRow | null): UserSettings {
     etsyTokenScope: row?.etsy_token_scope ?? null,
     etsyTokenType: row?.etsy_token_type ?? null,
     pinterestEnabled: row?.pinterest_enabled ?? process.env.PINTEREST_ENABLED !== "false",
+    pinterestAppId: row?.pinterest_app_id ?? process.env.PINTEREST_APP_ID ?? null,
+    pinterestAppSecret: row?.pinterest_app_secret ?? process.env.PINTEREST_APP_SECRET ?? null,
+    pinterestRedirectUri: row?.pinterest_redirect_uri ?? process.env.PINTEREST_REDIRECT_URI ?? null,
     pinterestAccessToken: row?.pinterest_access_token ?? process.env.PINTEREST_ACCESS_TOKEN ?? null,
+    pinterestRefreshToken: row?.pinterest_refresh_token ?? process.env.PINTEREST_REFRESH_TOKEN ?? null,
+    pinterestTokenExpiresAt: row?.pinterest_token_expires_at ?? null,
+    pinterestTokenScope: row?.pinterest_token_scope ?? null,
+    pinterestTokenType: row?.pinterest_token_type ?? null,
     pinterestBoardId: row?.pinterest_board_id ?? process.env.PINTEREST_BOARD_ID ?? null,
     instagramEnabled: row?.instagram_enabled ?? process.env.INSTAGRAM_ENABLED === "true",
     instagramAccessToken: row?.instagram_access_token ?? process.env.INSTAGRAM_ACCESS_TOKEN ?? null,
@@ -170,6 +203,28 @@ export async function getInstagramAutomationUserId() {
   return data?.user_id ?? null;
 }
 
+export async function getPinterestAutomationUserId() {
+  if (process.env.AUTOMATION_USER_ID) {
+    return process.env.AUTOMATION_USER_ID;
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from("user_settings")
+    .select("user_id")
+    .eq("pinterest_enabled", true)
+    .not("pinterest_access_token", "is", null)
+    .not("pinterest_board_id", "is", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Failed to resolve Pinterest automation user: " + error.message);
+  }
+
+  return data?.user_id ?? null;
+}
+
 export async function saveUserSettings(userId: string, settings: UserSettingsInput) {
   const { error } = await getSupabaseAdmin()
     .from("user_settings")
@@ -180,7 +235,9 @@ export async function saveUserSettings(userId: string, settings: UserSettingsInp
         etsy_redirect_uri: clean(settings.etsyRedirectUri),
         etsy_shop_id: clean(settings.etsyShopId),
         pinterest_enabled: settings.pinterestEnabled,
-        pinterest_access_token: clean(settings.pinterestAccessToken),
+        pinterest_app_id: clean(settings.pinterestAppId),
+        pinterest_app_secret: clean(settings.pinterestAppSecret),
+        pinterest_redirect_uri: clean(settings.pinterestRedirectUri),
         pinterest_board_id: clean(settings.pinterestBoardId),
         instagram_enabled: settings.instagramEnabled,
         instagram_access_token: clean(settings.instagramAccessToken),
@@ -245,5 +302,32 @@ export async function saveEtsyShopIdForUser(userId: string, shopId: number | str
 
   if (error) {
     throw new Error(`Failed to save Etsy shop id: ${error.message}`);
+  }
+}
+
+export async function savePinterestTokenForUser(input: {
+  userId: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  scope?: string;
+  tokenType?: string;
+}) {
+  const { error } = await getSupabaseAdmin()
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: input.userId,
+        pinterest_access_token: input.accessToken,
+        pinterest_refresh_token: input.refreshToken,
+        pinterest_token_expires_at: input.expiresAt,
+        pinterest_token_scope: input.scope ?? null,
+        pinterest_token_type: input.tokenType ?? null
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    throw new Error(`Failed to save Pinterest OAuth token: ${error.message}`);
   }
 }

@@ -1,6 +1,7 @@
 import { saveSettingsAction } from "./actions";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
+import { listPinterestBoards, type PinterestBoard } from "@/lib/pinterest/client";
 import { getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,22 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const saved = getParam(params, "saved") === "1";
   const etsyStatus = getParam(params, "etsy");
   const etsyWarning = getParam(params, "warning");
+  const pinterestStatus = getParam(params, "pinterest");
+  let pinterestBoards: PinterestBoard[] = [];
+  let pinterestBoardsUnavailable = false;
+
+  if (settings.pinterestAccessToken) {
+    try {
+      pinterestBoards = await listPinterestBoards(session.userId);
+    } catch (error) {
+      pinterestBoardsUnavailable = true;
+      console.error("[PINTEREST_SETTINGS] Board discovery failed", error);
+    }
+  }
+
+  const canConnectPinterest = Boolean(
+    settings.pinterestAppId && settings.pinterestAppSecret && settings.pinterestRedirectUri
+  );
 
   return (
     <main className="page">
@@ -47,6 +64,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       ) : null}
       {etsyStatus === "connected" && !etsyWarning ? (
         <section className="alert alert-success" role="alert">Etsy connected successfully.</section>
+      ) : null}
+      {pinterestStatus === "connected" ? (
+        <section className="alert alert-success" role="alert">Pinterest connected successfully. Select a board and save settings.</section>
+      ) : null}
+      {pinterestStatus === "error" ? (
+        <section className="alert alert-danger" role="alert">Pinterest connection failed. Check the App ID, secret, and exact redirect URI, then try again.</section>
       ) : null}
 
       <form action={saveSettingsAction} className="settings-form">
@@ -74,7 +97,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         <section className="settings-section">
           <div>
             <h2>Pinterest</h2>
-            <p>Token and board target used when Pinterest queue items are published.</p>
+            <p>OAuth credentials and the board used when Pinterest queue items are published.</p>
           </div>
           <div className="settings-grid">
             <label className="checkbox-field">
@@ -82,13 +105,44 @@ export default async function SettingsPage({ searchParams }: PageProps) {
               Enable Pinterest queueing
             </label>
             <label>
-              Access token
-              <input name="pinterestAccessToken" defaultValue={value(settings.pinterestAccessToken)} placeholder="Pinterest access token" />
+              Pinterest App ID
+              <input name="pinterestAppId" defaultValue={value(settings.pinterestAppId)} placeholder="1609654" />
             </label>
             <label>
-              Board ID
-              <input name="pinterestBoardId" defaultValue={value(settings.pinterestBoardId)} placeholder="Pinterest board ID" />
+              Pinterest App secret
+              <input name="pinterestAppSecret" type="password" defaultValue={value(settings.pinterestAppSecret)} placeholder="Pinterest App secret" />
             </label>
+            <label>
+              Pinterest redirect URI
+              <input name="pinterestRedirectUri" defaultValue={value(settings.pinterestRedirectUri)} placeholder="https://etsy-pinterest.vercel.app/api/auth/pinterest/callback" />
+            </label>
+            <label>
+              Board
+              {pinterestBoards.length > 0 ? (
+                <select name="pinterestBoardId" defaultValue={value(settings.pinterestBoardId)}>
+                  <option value="">Select a Pinterest board</option>
+                  {settings.pinterestBoardId && !pinterestBoards.some((board) => board.id === settings.pinterestBoardId) ? (
+                    <option value={settings.pinterestBoardId}>{settings.pinterestBoardId}</option>
+                  ) : null}
+                  {pinterestBoards.map((board) => (
+                    <option key={board.id} value={board.id}>{board.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input name="pinterestBoardId" defaultValue={value(settings.pinterestBoardId)} placeholder="Available after Pinterest connection" />
+              )}
+            </label>
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              {canConnectPinterest ? (
+                <a className="btn btn-outline-danger" href="/api/auth/pinterest/start">
+                  {settings.pinterestAccessToken ? "Reconnect Pinterest" : "Connect Pinterest"}
+                </a>
+              ) : (
+                <span className="text-secondary">Save the App ID, secret, and redirect URI before connecting.</span>
+              )}
+              {settings.pinterestAccessToken ? <span className="badge text-bg-success">Connected</span> : null}
+              {pinterestBoardsUnavailable ? <span className="text-danger">Boards could not be loaded. Reconnect Pinterest.</span> : null}
+            </div>
           </div>
         </section>
 

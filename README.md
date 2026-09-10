@@ -21,6 +21,7 @@ This version replaces that with:
 - Database-backed initial bootstrap state
 - Etsy pagination for 1300+ listings
 - Queue-based Pinterest publishing with retry limits
+- User-scoped Pinterest OAuth with automatic access-token refresh
 - Queue-based Instagram publishing with retry limits
 - Atomic queue claiming to reduce concurrent duplicate processing risk
 - Vercel Cron endpoints secured with `CRON_SECRET`
@@ -212,6 +213,17 @@ The service:
 It never uses Etsy timestamps, state transitions, active timestamps, or renew timestamps to decide whether something is new.
 
 ## Pinterest publishing
+
+Register this exact production redirect URI in the Pinterest developer app:
+
+```text
+https://YOUR-VERCEL-DOMAIN.vercel.app/api/auth/pinterest/callback
+```
+
+In `/settings`, save the Pinterest App ID, App secret, and redirect URI. Then click
+`Connect Pinterest`, authorize the `boards:read`, `pins:read`, and `pins:write`
+scopes, select the destination board, and save settings. Access and continuous
+refresh tokens are stored per user in Supabase and refreshed automatically.
 
 Vercel Cron calls:
 

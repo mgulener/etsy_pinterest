@@ -4,6 +4,11 @@ import { join } from "node:path";
 import test from "node:test";
 import { getAllActiveListings } from "../lib/etsy/client";
 import { extractEtsyShopId } from "../lib/etsy/auth";
+import {
+  buildPinterestAuthorizationUrl,
+  PINTEREST_OAUTH_SCOPES,
+  shouldRefreshPinterestToken
+} from "../lib/pinterest/auth";
 import { normalizeEtsyListing } from "../lib/etsy/listings";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
@@ -422,6 +427,32 @@ test("Etsy sync runs as a durable background job", () => {
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0013_add_queue_schedule_lock.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0014_add_instagram_publish_job_type.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0017_instagram_single_image_only.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0018_pinterest_oauth.sql")), true);
+});
+
+test("Pinterest OAuth requests only the publishing scopes and preserves state", () => {
+  const url = buildPinterestAuthorizationUrl({
+    appId: "1609654",
+    redirectUri: "https://example.com/api/auth/pinterest/callback",
+    state: "state-value"
+  });
+
+  assert.equal(url.origin, "https://www.pinterest.com");
+  assert.equal(url.pathname, "/oauth/");
+  assert.equal(url.searchParams.get("client_id"), "1609654");
+  assert.equal(url.searchParams.get("redirect_uri"), "https://example.com/api/auth/pinterest/callback");
+  assert.equal(url.searchParams.get("response_type"), "code");
+  assert.equal(url.searchParams.get("scope"), PINTEREST_OAUTH_SCOPES.join(","));
+  assert.equal(url.searchParams.get("state"), "state-value");
+});
+
+test("Pinterest OAuth refreshes only expired access tokens", () => {
+  const now = Date.UTC(2026, 8, 10, 12);
+
+  assert.equal(shouldRefreshPinterestToken(null, now), false);
+  assert.equal(shouldRefreshPinterestToken(now + 1, now), false);
+  assert.equal(shouldRefreshPinterestToken(now, now), true);
+  assert.equal(shouldRefreshPinterestToken(now - 1, now), true);
 });
 
 test("queue action UI uses icons and enabled platform settings", () => {
@@ -464,6 +495,8 @@ test("canonical route architecture has no legacy app routes", () => {
     "app/api/cron/etsy/sync/route.ts",
     "app/api/cron/pinterest/publish/route.ts",
     "app/api/cron/instagram/publish/route.ts",
+    "app/api/auth/pinterest/start/route.ts",
+    "app/api/auth/pinterest/callback/route.ts",
     "app/api/etsy/sync/route.ts",
     "app/api/pinterest/publish/route.ts",
     "app/api/instagram/publish/route.ts",

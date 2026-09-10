@@ -56,7 +56,14 @@ export type UserSettingsRow = {
   etsy_token_scope: string | null;
   etsy_token_type: string | null;
   pinterest_enabled: boolean;
+  pinterest_app_id: string | null;
+  pinterest_app_secret: string | null;
+  pinterest_redirect_uri: string | null;
   pinterest_access_token: string | null;
+  pinterest_refresh_token: string | null;
+  pinterest_token_expires_at: number | null;
+  pinterest_token_scope: string | null;
+  pinterest_token_type: string | null;
   pinterest_board_id: string | null;
   instagram_enabled: boolean;
   instagram_access_token: string | null;

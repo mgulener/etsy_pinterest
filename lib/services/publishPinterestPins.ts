@@ -1,4 +1,5 @@
-import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
+import { getCurrentUserSettings, getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
+import { getPinterestAccessToken } from "@/lib/pinterest/auth";
 import { createPin } from "@/lib/pinterest/pins";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
@@ -147,8 +148,8 @@ export async function publishPinterestPinsWithDependencies(input: {
   };
 }
 
-export async function publishPinterestPins() {
-  const settings = await getCurrentUserSettings();
+export async function publishPinterestPins(userId?: string | null) {
+  const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
 
   if (!settings.pinterestEnabled) {
     return {
@@ -164,10 +165,13 @@ export async function publishPinterestPins() {
     };
   }
 
+  // A daily cron refreshes expiring OAuth credentials even when the queue is empty.
+  await getPinterestAccessToken(userId);
+
   return publishPinterestPinsWithDependencies({
     queueRepository: createPinQueueRepository(),
     postsRepository: createPinterestPostsRepository(),
-    pinterest: { createPin },
+    pinterest: { createPin: (input) => createPin(input, userId) },
     maxPinsPerRun: settings.maxPinsPerRun,
     maxRetries: settings.maxPinRetries,
     dryRun: settings.dryRun
