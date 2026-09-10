@@ -18,6 +18,12 @@ import {
   savePinterestBoardIdForUser
 } from "@/lib/repositories/userSettingsRepository";
 import { buildScheduledAt, getNextScheduleStart, sortListingsForQueue } from "@/lib/queue/scheduling";
+import {
+  classifyPinterestListingsWithAI,
+  type PinterestBoardChoice
+} from "@/lib/pinterest/boardClassifier";
+import type { PinterestBoardMappingRow } from "@/lib/supabase/types";
+import { logger } from "@/lib/utils/logger";
 
 const FALLBACK_BOARD_NAME = "All Products";
 
@@ -103,9 +109,62 @@ export function resolvePinterestBoardId(
   return fallbackBoardId ?? undefined;
 }
 
+export function createPinterestBoardResolver(input: {
+  mappings: PinterestBoardMappingRow[];
+  fallbackBoardId?: string | null;
+  openaiApiKey?: string | null;
+  openaiModel?: string | null;
+}) {
+  const boardBySectionId = new Map(
+    input.mappings.map((mapping) => [mapping.etsy_shop_section_id, mapping.pinterest_board_id])
+  );
+  const boards: PinterestBoardChoice[] = [
+    ...(input.fallbackBoardId
+      ? [{ id: input.fallbackBoardId, name: FALLBACK_BOARD_NAME }]
+      : []),
+    ...input.mappings.map((mapping) => ({
+      id: mapping.pinterest_board_id,
+      name: mapping.pinterest_board_name
+    }))
+  ].filter((board, index, items) => items.findIndex((item) => item.id === board.id) === index);
+
+  return async (listing: NormalizedEtsyListing) => {
+    if (listing.etsyShopSectionId != null) {
+      const mappedBoardId = boardBySectionId.get(listing.etsyShopSectionId);
+      if (mappedBoardId) {
+        return mappedBoardId;
+      }
+    }
+
+    if (!input.fallbackBoardId || !input.openaiApiKey) {
+      return input.fallbackBoardId ?? undefined;
+    }
+
+    try {
+      const assignments = await classifyPinterestListingsWithAI({
+        listings: [listing],
+        boards,
+        fallbackBoardId: input.fallbackBoardId,
+        apiKey: input.openaiApiKey,
+        model: input.openaiModel
+      });
+      return assignments.get(listing.etsyListingId) ?? input.fallbackBoardId;
+    } catch (error) {
+      logger.warn("PINTEREST_BOARD_CLASSIFICATION", "Using fallback board after AI failure", {
+        etsyListingId: listing.etsyListingId,
+        message: error instanceof Error ? error.message : "Unknown classification error"
+      });
+      return input.fallbackBoardId;
+    }
+  };
+}
+
 export async function preparePinterestPublishingForUser(userId: string) {
   const settings = await getSettingsForUser(userId);
 
+  if (settings.pinterestEnvironment === "sandbox") {
+    throw new Error("Switch Pinterest to Production before syncing Etsy sections and boards.");
+  }
   if (!settings.pinterestEnabled || !settings.pinterestAccessToken) {
     throw new Error("Connect and enable Pinterest before syncing boards.");
   }
@@ -168,5 +227,47 @@ export async function preparePinterestPublishingForUser(userId: string) {
     ...boardSync,
     listings: normalizedListings.length,
     queued
+  };
+}
+
+export async function redistributeFallbackPinterestQueueForUser(userId: string) {
+  const settings = await getSettingsForUser(userId);
+  if (!settings.pinterestEnabled || !settings.pinterestBoardId) {
+    throw new Error("Pinterest and its fallback board must be configured first.");
+  }
+
+  const mappings = await createPinterestBoardMappingsRepository().listForUser(userId);
+  const boards: PinterestBoardChoice[] = [
+    { id: settings.pinterestBoardId, name: FALLBACK_BOARD_NAME },
+    ...mappings.map((mapping) => ({
+      id: mapping.pinterest_board_id,
+      name: mapping.pinterest_board_name
+    }))
+  ].filter((board, index, items) => items.findIndex((item) => item.id === board.id) === index);
+  const queueRepository = createPinQueueRepository();
+  const candidates = await queueRepository.listPendingByBoard(settings.pinterestBoardId);
+  const boardByListingId = await classifyPinterestListingsWithAI({
+    listings: candidates.map((item) => ({
+      etsyListingId: item.etsy_listing_id,
+      title: item.title,
+      description: item.description
+    })),
+    boards,
+    fallbackBoardId: settings.pinterestBoardId,
+    apiKey: settings.openaiApiKey,
+    model: settings.openaiModel
+  });
+  const assignments = candidates
+    .map((item) => ({
+      id: item.id,
+      boardId: boardByListingId.get(item.etsy_listing_id) ?? settings.pinterestBoardId!
+    }))
+    .filter((assignment) => assignment.boardId !== settings.pinterestBoardId);
+  const moved = await queueRepository.updateBoardAssignments(assignments);
+
+  return {
+    reviewed: candidates.length,
+    moved,
+    keptInFallback: candidates.length - moved
   };
 }

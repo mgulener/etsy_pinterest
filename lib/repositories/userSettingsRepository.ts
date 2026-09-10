@@ -13,6 +13,7 @@ export type UserSettings = {
   etsyTokenScope: string | null;
   etsyTokenType: string | null;
   pinterestEnabled: boolean;
+  pinterestEnvironment: "production" | "sandbox";
   pinterestAppId: string | null;
   pinterestAppSecret: string | null;
   pinterestRedirectUri: string | null;
@@ -22,6 +23,8 @@ export type UserSettings = {
   pinterestTokenScope: string | null;
   pinterestTokenType: string | null;
   pinterestBoardId: string | null;
+  pinterestSandboxAccessToken: string | null;
+  pinterestSandboxBoardId: string | null;
   instagramEnabled: boolean;
   instagramAccessToken: string | null;
   instagramAccountId: string | null;
@@ -63,6 +66,7 @@ type SettingsRow = {
   etsy_token_scope: string | null;
   etsy_token_type: string | null;
   pinterest_enabled: boolean;
+  pinterest_environment: "production" | "sandbox";
   pinterest_app_id: string | null;
   pinterest_app_secret: string | null;
   pinterest_redirect_uri: string | null;
@@ -72,6 +76,8 @@ type SettingsRow = {
   pinterest_token_scope: string | null;
   pinterest_token_type: string | null;
   pinterest_board_id: string | null;
+  pinterest_sandbox_access_token: string | null;
+  pinterest_sandbox_board_id: string | null;
   instagram_enabled: boolean;
   instagram_access_token: string | null;
   instagram_account_id: string | null;
@@ -93,6 +99,10 @@ function clean(value: string | null | undefined) {
   return trimmed ? trimmed : null;
 }
 
+function normalizePinterestEnvironment(value: string | null | undefined) {
+  return value === "sandbox" ? "sandbox" as const : "production" as const;
+}
+
 function fromRow(row: SettingsRow | null): UserSettings {
   return {
     userId: row?.user_id ?? null,
@@ -105,6 +115,9 @@ function fromRow(row: SettingsRow | null): UserSettings {
     etsyTokenScope: row?.etsy_token_scope ?? null,
     etsyTokenType: row?.etsy_token_type ?? null,
     pinterestEnabled: row?.pinterest_enabled ?? process.env.PINTEREST_ENABLED !== "false",
+    pinterestEnvironment: normalizePinterestEnvironment(
+      row?.pinterest_environment ?? process.env.PINTEREST_ENVIRONMENT
+    ),
     pinterestAppId: row?.pinterest_app_id ?? process.env.PINTEREST_APP_ID ?? null,
     pinterestAppSecret: row?.pinterest_app_secret ?? process.env.PINTEREST_APP_SECRET ?? null,
     pinterestRedirectUri: row?.pinterest_redirect_uri ?? process.env.PINTEREST_REDIRECT_URI ?? null,
@@ -114,6 +127,8 @@ function fromRow(row: SettingsRow | null): UserSettings {
     pinterestTokenScope: row?.pinterest_token_scope ?? null,
     pinterestTokenType: row?.pinterest_token_type ?? null,
     pinterestBoardId: row?.pinterest_board_id ?? process.env.PINTEREST_BOARD_ID ?? null,
+    pinterestSandboxAccessToken: row?.pinterest_sandbox_access_token ?? process.env.PINTEREST_SANDBOX_ACCESS_TOKEN ?? null,
+    pinterestSandboxBoardId: row?.pinterest_sandbox_board_id ?? process.env.PINTEREST_SANDBOX_BOARD_ID ?? null,
     instagramEnabled: row?.instagram_enabled ?? process.env.INSTAGRAM_ENABLED === "true",
     instagramAccessToken: row?.instagram_access_token ?? process.env.INSTAGRAM_ACCESS_TOKEN ?? null,
     instagramAccountId: row?.instagram_account_id ?? process.env.INSTAGRAM_ACCOUNT_ID ?? null,
@@ -235,10 +250,13 @@ export async function saveUserSettings(userId: string, settings: UserSettingsInp
         etsy_redirect_uri: clean(settings.etsyRedirectUri),
         etsy_shop_id: clean(settings.etsyShopId),
         pinterest_enabled: settings.pinterestEnabled,
+        pinterest_environment: settings.pinterestEnvironment,
         pinterest_app_id: clean(settings.pinterestAppId),
         pinterest_app_secret: clean(settings.pinterestAppSecret),
         pinterest_redirect_uri: clean(settings.pinterestRedirectUri),
         pinterest_board_id: clean(settings.pinterestBoardId),
+        pinterest_sandbox_access_token: clean(settings.pinterestSandboxAccessToken),
+        pinterest_sandbox_board_id: clean(settings.pinterestSandboxBoardId),
         instagram_enabled: settings.instagramEnabled,
         instagram_access_token: clean(settings.instagramAccessToken),
         instagram_account_id: clean(settings.instagramAccountId),

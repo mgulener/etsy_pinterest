@@ -1,7 +1,8 @@
-import { getPinterestAccessToken } from "@/lib/pinterest/auth";
+import {
+  getPinterestApiContext,
+  type PinterestApiEnvironment
+} from "@/lib/pinterest/auth";
 import type { CreatePinInput, CreatePinResult } from "./types";
-
-const PINTEREST_API_URL = "https://api.pinterest.com/v5";
 
 export type PinterestBoard = {
   id: string;
@@ -14,11 +15,36 @@ export type CreatePinterestBoardInput = {
   description?: string;
 };
 
-export async function pinterestRequest<T>(path: string, init: RequestInit = {}, userId?: string | null) {
-  const response = await fetch(`${PINTEREST_API_URL}${path}`, {
+type PinterestApiContext = {
+  environment: PinterestApiEnvironment;
+  apiBaseUrl: string;
+  accessToken: string;
+  boardId: string | null;
+};
+
+export function resolvePinterestPublishBoardId(
+  requestedBoardId: string,
+  context: Pick<PinterestApiContext, "environment" | "boardId">
+) {
+  if (context.environment === "sandbox") {
+    if (!context.boardId) {
+      throw new Error("Select a Pinterest Sandbox board in Settings before testing a Pin.");
+    }
+    return context.boardId;
+  }
+
+  return requestedBoardId;
+}
+
+async function pinterestRequestWithContext<T>(
+  path: string,
+  init: RequestInit,
+  context: PinterestApiContext
+) {
+  const response = await fetch(`${context.apiBaseUrl}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${await getPinterestAccessToken(userId)}`,
+      Authorization: `Bearer ${context.accessToken}`,
       "Content-Type": "application/json",
       ...init.headers
     },
@@ -33,11 +59,16 @@ export async function pinterestRequest<T>(path: string, init: RequestInit = {}, 
   return (await response.json()) as T;
 }
 
+export async function pinterestRequest<T>(path: string, init: RequestInit = {}, userId?: string | null) {
+  return pinterestRequestWithContext<T>(path, init, await getPinterestApiContext(userId));
+}
+
 export async function createPin(input: CreatePinInput, userId?: string | null): Promise<CreatePinResult> {
-  const response = await pinterestRequest<{ id: string }>("/pins", {
+  const context = await getPinterestApiContext(userId);
+  const response = await pinterestRequestWithContext<{ id: string }>("/pins", {
     method: "POST",
     body: JSON.stringify({
-      board_id: input.boardId,
+      board_id: resolvePinterestPublishBoardId(input.boardId, context),
       title: input.title.slice(0, 100),
       description: input.description.slice(0, 800),
       link: input.destinationUrl,
@@ -46,7 +77,7 @@ export async function createPin(input: CreatePinInput, userId?: string | null): 
         url: input.imageUrl
       }
     })
-  }, userId);
+  }, context);
 
   return { id: response.id };
 }
@@ -65,11 +96,16 @@ export async function createPinterestBoard(
   input: CreatePinterestBoardInput,
   userId?: string | null
 ) {
-  return pinterestRequest<PinterestBoard>("/boards", {
+  const context = await getPinterestApiContext(userId);
+  if (context.environment === "sandbox") {
+    throw new Error("Pinterest Sandbox does not support creating boards through this setup.");
+  }
+
+  return pinterestRequestWithContext<PinterestBoard>("/boards", {
     method: "POST",
     body: JSON.stringify({
       name: input.name.slice(0, 180),
       description: input.description?.slice(0, 500) ?? ""
     })
-  }, userId);
+  }, context);
 }

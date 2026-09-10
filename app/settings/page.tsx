@@ -1,4 +1,9 @@
-import { saveSettingsAction, syncPinterestBoardsAction } from "./actions";
+import {
+  redistributePinterestQueueAction,
+  saveSettingsAction,
+  syncPinterestBoardsAction,
+  testPinterestSandboxPinAction
+} from "./actions";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { listPinterestBoards, type PinterestBoard } from "@/lib/pinterest/client";
@@ -32,11 +37,22 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const pinterestSetup = getParam(params, "pinterestSetup");
   const createdBoards = getParam(params, "createdBoards") ?? "0";
   const queuedListings = getParam(params, "queued") ?? "0";
+  const pinterestRedistribution = getParam(params, "pinterestRedistribution");
+  const reviewedListings = getParam(params, "reviewed") ?? "0";
+  const movedListings = getParam(params, "moved") ?? "0";
+  const fallbackListings = getParam(params, "fallback") ?? "0";
+  const pinterestSandboxTest = getParam(params, "pinterestSandboxTest");
+  const sandboxTestListing = getParam(params, "listing");
+  const sandboxTestPin = getParam(params, "pin");
   let pinterestBoards: PinterestBoard[] = [];
   let pinterestMappings: PinterestBoardMappingRow[] = [];
   let pinterestBoardsUnavailable = false;
 
-  if (settings.pinterestAccessToken) {
+  const hasActivePinterestToken = settings.pinterestEnvironment === "sandbox"
+    ? Boolean(settings.pinterestSandboxAccessToken)
+    : Boolean(settings.pinterestAccessToken);
+
+  if (hasActivePinterestToken) {
     try {
       pinterestBoards = await listPinterestBoards(session.userId);
     } catch (error) {
@@ -83,6 +99,16 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       {pinterestStatus === "error" ? (
         <section className="alert alert-danger" role="alert">Pinterest connection failed. Check the App ID, secret, and exact redirect URI, then try again.</section>
       ) : null}
+      {pinterestSandboxTest === "ready" ? (
+        <section className="alert alert-success" role="alert">
+          Sandbox test Pin {sandboxTestPin} was created from Etsy listing {sandboxTestListing}. The production queue was not changed.
+        </section>
+      ) : null}
+      {pinterestSandboxTest === "error" ? (
+        <section className="alert alert-danger" role="alert">
+          Sandbox test Pin failed. Confirm the Sandbox token and board ID, then try again.
+        </section>
+      ) : null}
       {pinterestSetup === "ready" ? (
         <section className="alert alert-success" role="alert">
           Pinterest boards are ready. Created {createdBoards} boards and added {queuedListings} listings to the queue.
@@ -91,6 +117,16 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       {pinterestSetup === "error" ? (
         <section className="alert alert-danger" role="alert">
           Pinterest board setup failed. Confirm that migration 0019 is applied and reconnect Pinterest if needed.
+        </section>
+      ) : null}
+      {pinterestRedistribution === "ready" ? (
+        <section className="alert alert-success" role="alert">
+          Reviewed {reviewedListings} fallback listings. Moved {movedListings} to related boards and kept {fallbackListings} in All Products.
+        </section>
+      ) : null}
+      {pinterestRedistribution === "error" ? (
+        <section className="alert alert-danger" role="alert">
+          Pinterest board classification failed. Check the OpenAI setting and try again.
         </section>
       ) : null}
 
@@ -119,12 +155,19 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         <section className="settings-section">
           <div>
             <h2>Pinterest</h2>
-            <p>OAuth credentials and the board used when Pinterest queue items are published.</p>
+            <p>Production OAuth credentials and isolated Sandbox test credentials.</p>
           </div>
           <div className="settings-grid">
             <label className="checkbox-field">
               <input name="pinterestEnabled" type="checkbox" defaultChecked={settings.pinterestEnabled} />
               Enable Pinterest queueing
+            </label>
+            <label>
+              API environment
+              <select name="pinterestEnvironment" defaultValue={settings.pinterestEnvironment}>
+                <option value="production">Production</option>
+                <option value="sandbox">Sandbox</option>
+              </select>
             </label>
             <label>
               Pinterest App ID
@@ -139,10 +182,10 @@ export default async function SettingsPage({ searchParams }: PageProps) {
               <input name="pinterestRedirectUri" defaultValue={value(settings.pinterestRedirectUri)} placeholder="https://etsy-pinterest.vercel.app/api/auth/pinterest/callback" />
             </label>
             <label>
-              Board
-              {pinterestBoards.length > 0 ? (
+              Production board
+              {settings.pinterestEnvironment === "production" && pinterestBoards.length > 0 ? (
                 <select name="pinterestBoardId" defaultValue={value(settings.pinterestBoardId)}>
-                  <option value="">Select a Pinterest board</option>
+                  <option value="">Select a production board</option>
                   {settings.pinterestBoardId && !pinterestBoards.some((board) => board.id === settings.pinterestBoardId) ? (
                     <option value={settings.pinterestBoardId}>{settings.pinterestBoardId}</option>
                   ) : null}
@@ -151,9 +194,40 @@ export default async function SettingsPage({ searchParams }: PageProps) {
                   ))}
                 </select>
               ) : (
-                <input name="pinterestBoardId" defaultValue={value(settings.pinterestBoardId)} placeholder="Available after Pinterest connection" />
+                <input name="pinterestBoardId" defaultValue={value(settings.pinterestBoardId)} placeholder="Production board ID" />
               )}
             </label>
+            <label>
+              Sandbox access token
+              <input
+                name="pinterestSandboxAccessToken"
+                type="password"
+                autoComplete="off"
+                placeholder={settings.pinterestSandboxAccessToken ? "Sandbox token saved; leave blank to keep it" : "Paste the Sandbox token"}
+              />
+            </label>
+            <label>
+              Sandbox board
+              {settings.pinterestEnvironment === "sandbox" && pinterestBoards.length > 0 ? (
+                <select name="pinterestSandboxBoardId" defaultValue={value(settings.pinterestSandboxBoardId)}>
+                  <option value="">Select a Sandbox board</option>
+                  {settings.pinterestSandboxBoardId && !pinterestBoards.some((board) => board.id === settings.pinterestSandboxBoardId) ? (
+                    <option value={settings.pinterestSandboxBoardId}>{settings.pinterestSandboxBoardId}</option>
+                  ) : null}
+                  {pinterestBoards.map((board) => (
+                    <option key={board.id} value={board.id}>{board.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input name="pinterestSandboxBoardId" defaultValue={value(settings.pinterestSandboxBoardId)} placeholder="Available after saving the Sandbox token" />
+              )}
+            </label>
+            {settings.pinterestSandboxAccessToken ? (
+              <label className="checkbox-field">
+                <input name="clearPinterestSandboxAccessToken" type="checkbox" />
+                Clear saved Sandbox token
+              </label>
+            ) : null}
             <div className="d-flex align-items-center gap-2 flex-wrap">
               {canConnectPinterest ? (
                 <a className="btn btn-outline-danger" href="/api/auth/pinterest/start">
@@ -162,9 +236,21 @@ export default async function SettingsPage({ searchParams }: PageProps) {
               ) : (
                 <span className="text-secondary">Save the App ID, secret, and redirect URI before connecting.</span>
               )}
-              {settings.pinterestAccessToken ? <span className="badge text-bg-success">Connected</span> : null}
-              {pinterestBoardsUnavailable ? <span className="text-danger">Boards could not be loaded. Reconnect Pinterest.</span> : null}
+              {settings.pinterestAccessToken ? <span className="badge text-bg-success">Production connected</span> : null}
+              {settings.pinterestSandboxAccessToken ? <span className="badge text-bg-warning">Sandbox token saved</span> : null}
+              {pinterestBoardsUnavailable ? (
+                <span className="text-danger">
+                  {settings.pinterestEnvironment === "sandbox"
+                    ? "Sandbox boards could not be loaded. Check the token or enter the board ID manually."
+                    : "Boards could not be loaded. Reconnect Pinterest."}
+                </span>
+              ) : null}
             </div>
+            {settings.pinterestEnvironment === "sandbox" ? (
+              <div className="alert alert-warning mb-0" role="alert">
+                Automated Pinterest publishing is paused in Sandbox mode. Sandbox tests never consume production queue items.
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -256,45 +342,64 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         </div>
       </form>
 
-      {settings.pinterestAccessToken ? (
-        <form action={syncPinterestBoardsAction} className="settings-form mt-3">
-          <section className="settings-section">
-            <div>
-              <h2>Board Mapping</h2>
-              <p>Create or match one Pinterest board for every Etsy shop section, then route existing products to the correct board.</p>
-            </div>
-            <div>
-              <div className="d-flex align-items-center gap-2 mb-3">
+      {settings.pinterestEnvironment === "sandbox" && settings.pinterestSandboxAccessToken ? (
+        <section className="settings-section mt-3">
+          <div>
+            <h2>Sandbox Test</h2>
+            <p>Create one real Sandbox Pin from the next pending product without changing its production queue status.</p>
+          </div>
+          <form action={testPinterestSandboxPinAction}>
+            <SubmitButton className="btn btn-warning" pendingText="Creating Sandbox Pin...">
+              Publish Sandbox Test Pin
+            </SubmitButton>
+          </form>
+        </section>
+      ) : null}
+
+      {settings.pinterestAccessToken && settings.pinterestEnvironment === "production" ? (
+        <section className="settings-section mt-3">
+          <div>
+            <h2>Board Mapping</h2>
+            <p>Create or match one Pinterest board for every Etsy shop section, then route existing products to the correct board.</p>
+          </div>
+          <div>
+            <div className="d-flex align-items-center gap-2 mb-3 flex-wrap">
+              <form action={syncPinterestBoardsAction}>
                 <SubmitButton className="btn btn-danger" pendingText="Preparing Pinterest boards...">
                   Sync Etsy Sections &amp; Build Queue
                 </SubmitButton>
-                <span className="text-secondary small">Safe to run again; existing boards and queue items are reused.</span>
-              </div>
-              {pinterestMappings.length > 0 ? (
-                <div className="table-responsive">
-                  <table className="table table-sm align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th>Etsy section</th>
-                        <th>Pinterest board</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pinterestMappings.map((mapping) => (
-                        <tr key={mapping.id}>
-                          <td>{mapping.etsy_section_title}</td>
-                          <td>{mapping.pinterest_board_name}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-secondary">No Etsy section mappings have been created yet.</div>
-              )}
+              </form>
+              <form action={redistributePinterestQueueAction}>
+                <SubmitButton className="btn ai-button" pendingText="Classifying products...">
+                  Distribute All Products With AI
+                </SubmitButton>
+              </form>
+              <span className="text-secondary small">Safe to run again; existing boards and queue items are reused.</span>
             </div>
-          </section>
-        </form>
+            {pinterestMappings.length > 0 ? (
+              <div className="table-responsive">
+                <table className="table table-sm align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>Etsy section</th>
+                      <th>Pinterest board</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pinterestMappings.map((mapping) => (
+                      <tr key={mapping.id}>
+                        <td>{mapping.etsy_section_title}</td>
+                        <td>{mapping.pinterest_board_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-secondary">No Etsy section mappings have been created yet.</div>
+            )}
+          </div>
+        </section>
       ) : null}
     </main>
   );

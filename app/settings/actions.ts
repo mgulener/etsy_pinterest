@@ -3,8 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/session";
-import { saveUserSettings } from "@/lib/repositories/userSettingsRepository";
-import { preparePinterestPublishingForUser } from "@/lib/services/syncPinterestBoards";
+import {
+  getSettingsForUser,
+  saveUserSettings
+} from "@/lib/repositories/userSettingsRepository";
+import {
+  preparePinterestPublishingForUser,
+  redistributeFallbackPinterestQueueForUser
+} from "@/lib/services/syncPinterestBoards";
+import { testPinterestSandboxPinForUser } from "@/lib/services/testPinterestSandboxPin";
 
 function parsePositiveInteger(value: FormDataEntryValue | null, fallback: number) {
   const numberValue = Number(value ?? fallback);
@@ -14,16 +21,26 @@ function parsePositiveInteger(value: FormDataEntryValue | null, fallback: number
 
 export async function saveSettingsAction(formData: FormData) {
   const session = await requireAdminSession();
+  const currentSettings = await getSettingsForUser(session.userId);
+  const sandboxTokenInput = String(formData.get("pinterestSandboxAccessToken") ?? "").trim();
+  const clearSandboxToken = formData.get("clearPinterestSandboxAccessToken") === "on";
 
   await saveUserSettings(session.userId, {
     etsyApiKey: String(formData.get("etsyApiKey") ?? ""),
     etsyRedirectUri: String(formData.get("etsyRedirectUri") ?? ""),
     etsyShopId: String(formData.get("etsyShopId") ?? ""),
     pinterestEnabled: formData.get("pinterestEnabled") === "on",
+    pinterestEnvironment: formData.get("pinterestEnvironment") === "sandbox"
+      ? "sandbox"
+      : "production",
     pinterestAppId: String(formData.get("pinterestAppId") ?? ""),
     pinterestAppSecret: String(formData.get("pinterestAppSecret") ?? ""),
     pinterestRedirectUri: String(formData.get("pinterestRedirectUri") ?? ""),
     pinterestBoardId: String(formData.get("pinterestBoardId") ?? ""),
+    pinterestSandboxAccessToken: clearSandboxToken
+      ? null
+      : sandboxTokenInput || currentSettings.pinterestSandboxAccessToken,
+    pinterestSandboxBoardId: String(formData.get("pinterestSandboxBoardId") ?? ""),
     instagramEnabled: formData.get("instagramEnabled") === "on",
     instagramAccessToken: String(formData.get("instagramAccessToken") ?? ""),
     instagramAccountId: String(formData.get("instagramAccountId") ?? ""),
@@ -65,5 +82,49 @@ export async function syncPinterestBoardsAction() {
   revalidatePath("/settings");
   revalidatePath("/pinterest/queue");
   revalidatePath("/etsy/listings");
+  redirect(destination);
+}
+
+export async function redistributePinterestQueueAction() {
+  const session = await requireAdminSession();
+  let destination: string;
+
+  try {
+    const result = await redistributeFallbackPinterestQueueForUser(session.userId);
+    const params = new URLSearchParams({
+      pinterestRedistribution: "ready",
+      reviewed: String(result.reviewed),
+      moved: String(result.moved),
+      fallback: String(result.keptInFallback)
+    });
+    destination = `/settings?${params.toString()}`;
+  } catch (error) {
+    console.error("[PINTEREST_BOARD_CLASSIFICATION] Redistribution failed", error);
+    destination = "/settings?pinterestRedistribution=error";
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/pinterest/queue");
+  redirect(destination);
+}
+
+export async function testPinterestSandboxPinAction() {
+  const session = await requireAdminSession();
+  let destination: string;
+
+  try {
+    const result = await testPinterestSandboxPinForUser(session.userId);
+    const params = new URLSearchParams({
+      pinterestSandboxTest: "ready",
+      listing: String(result.etsyListingId),
+      pin: result.pinterestPinId
+    });
+    destination = `/settings?${params.toString()}`;
+  } catch (error) {
+    console.error("[PINTEREST_SANDBOX] Test Pin failed", error);
+    destination = "/settings?pinterestSandboxTest=error";
+  }
+
+  revalidatePath("/settings");
   redirect(destination);
 }

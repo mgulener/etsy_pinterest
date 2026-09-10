@@ -17,7 +17,7 @@ import type {
   SyncListingsRepository,
   SyncQueueRepository
 } from "./types";
-import { resolvePinterestBoardId } from "./syncPinterestBoards";
+import { createPinterestBoardResolver } from "./syncPinterestBoards";
 
 export type SyncProgress = {
   current: number;
@@ -43,7 +43,9 @@ export async function syncEtsyListingsWithDependencies(input: {
   instagramQueueRepository?: InstagramSyncQueueRepository;
   settingsRepository: BootstrapSettingsRepository;
   boardId?: string;
-  resolveBoardId?: (listing: NormalizedEtsyListing) => string | undefined;
+  resolveBoardId?: (
+    listing: NormalizedEtsyListing
+  ) => string | undefined | Promise<string | undefined>;
   onProgress?: (progress: SyncProgress) => Promise<void> | void;
   instagramCaptionGenerator?: (listing: NormalizedEtsyListing) => Promise<string>;
 }): Promise<SyncEtsyListingsResult> {
@@ -114,7 +116,8 @@ export async function syncEtsyListingsWithDependencies(input: {
     });
     const errorCountBeforeQueueing = errors.length;
 
-    const boardId = input.resolveBoardId?.(listing) ?? input.boardId;
+    const resolvedBoardId = await input.resolveBoardId?.(listing);
+    const boardId = resolvedBoardId ?? input.boardId;
 
     if (input.queueRepository && boardId) {
       try {
@@ -230,11 +233,8 @@ export async function syncEtsyListingsForUser(
   const pinterestMappings = settings.pinterestEnabled
     ? await createPinterestBoardMappingsRepository().listForUser(userId)
     : [];
-  const boardBySectionId = new Map(
-    pinterestMappings.map((mapping) => [mapping.etsy_shop_section_id, mapping.pinterest_board_id])
-  );
   const pinterestEnabled = Boolean(
-    settings.pinterestEnabled && (settings.pinterestBoardId || boardBySectionId.size > 0)
+    settings.pinterestEnabled && (settings.pinterestBoardId || pinterestMappings.length > 0)
   );
   const instagramEnabled = Boolean(
     settings.instagramEnabled &&
@@ -252,7 +252,12 @@ export async function syncEtsyListingsForUser(
     settingsRepository: createAppSettingsRepository(),
     boardId: pinterestEnabled ? settings.pinterestBoardId ?? undefined : undefined,
     resolveBoardId: pinterestEnabled
-      ? (listing) => resolvePinterestBoardId(listing, boardBySectionId, settings.pinterestBoardId)
+      ? createPinterestBoardResolver({
+          mappings: pinterestMappings,
+          fallbackBoardId: settings.pinterestBoardId,
+          openaiApiKey: settings.aiCaptionsEnabled ? settings.openaiApiKey : null,
+          openaiModel: settings.openaiModel
+        })
       : undefined,
     onProgress,
     instagramCaptionGenerator: settings.aiCaptionsEnabled && settings.openaiApiKey
@@ -273,11 +278,8 @@ export async function syncEtsyListings(
   const pinterestMappings = settings.pinterestEnabled && settings.userId
     ? await createPinterestBoardMappingsRepository().listForUser(settings.userId)
     : [];
-  const boardBySectionId = new Map(
-    pinterestMappings.map((mapping) => [mapping.etsy_shop_section_id, mapping.pinterest_board_id])
-  );
   const pinterestEnabled = Boolean(
-    settings.pinterestEnabled && (settings.pinterestBoardId || boardBySectionId.size > 0)
+    settings.pinterestEnabled && (settings.pinterestBoardId || pinterestMappings.length > 0)
   );
   const instagramEnabled = Boolean(
     settings.instagramEnabled &&
@@ -295,7 +297,12 @@ export async function syncEtsyListings(
     settingsRepository: createAppSettingsRepository(),
     boardId: pinterestEnabled ? settings.pinterestBoardId ?? undefined : undefined,
     resolveBoardId: pinterestEnabled
-      ? (listing) => resolvePinterestBoardId(listing, boardBySectionId, settings.pinterestBoardId)
+      ? createPinterestBoardResolver({
+          mappings: pinterestMappings,
+          fallbackBoardId: settings.pinterestBoardId,
+          openaiApiKey: settings.aiCaptionsEnabled ? settings.openaiApiKey : null,
+          openaiModel: settings.openaiModel
+        })
       : undefined,
     onProgress,
     instagramCaptionGenerator: settings.aiCaptionsEnabled && settings.openaiApiKey

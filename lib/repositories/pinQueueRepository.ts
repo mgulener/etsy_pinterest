@@ -22,6 +22,8 @@ export type PinQueueRepository = {
     boardId: string;
     scheduledAt?: string;
   }>): Promise<number>;
+  listPendingByBoard(boardId: string): Promise<PinQueueRow[]>;
+  updateBoardAssignments(assignments: Array<{ id: string; boardId: string }>): Promise<number>;
   updateSchedule(id: string, scheduledAt: string): Promise<void>;
   rebuildPendingSchedule(intervalMinutes?: number): Promise<number>;
   listPending(limit: number): Promise<PinQueueRow[]>;
@@ -145,6 +147,59 @@ export function createPinQueueRepository(): PinQueueRepository {
       }
 
       return created;
+    },
+
+    async listPendingByBoard(boardId) {
+      const pageSize = 1000;
+      const rows: PinQueueRow[] = [];
+      let from = 0;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from("pin_queue")
+          .select("*")
+          .eq("board_id", boardId)
+          .eq("status", "pending")
+          .range(from, from + pageSize - 1);
+
+        if (error) {
+          throw new Error(`Failed to list fallback Pinterest queue: ${error.message}`);
+        }
+
+        rows.push(...(data ?? []));
+        if ((data?.length ?? 0) < pageSize) {
+          break;
+        }
+        from += pageSize;
+      }
+
+      return rows;
+    },
+
+    async updateBoardAssignments(assignments) {
+      let updated = 0;
+      const batchSize = 25;
+
+      for (let index = 0; index < assignments.length; index += batchSize) {
+        const batch = assignments.slice(index, index + batchSize);
+        const results = await Promise.all(batch.map(({ id, boardId }) =>
+          supabase
+            .from("pin_queue")
+            .update({ board_id: boardId })
+            .eq("id", id)
+            .eq("status", "pending")
+            .select("id")
+        ));
+        const error = results.find((result) => result.error)?.error;
+
+        if (error) {
+          throw new Error(`Failed to update Pinterest board assignments: ${error.message}`);
+        }
+
+        updated += results.reduce((count, result) => count + (result.data?.length ?? 0), 0);
+      }
+
+      return updated;
     },
 
     async updateSchedule(id, scheduledAt) {

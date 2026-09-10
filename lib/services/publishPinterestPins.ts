@@ -20,6 +20,7 @@ export type PublishPinterestPinsResult = {
   failed: number;
   retried: number;
   dryRun: boolean;
+  pausedReason?: string;
   errors: Array<{ etsyListingId: number; message: string }>;
 };
 
@@ -161,6 +162,22 @@ export async function publishPinterestPins(userId?: string | null) {
       failed: 0,
       retried: 0,
       dryRun: settings.dryRun,
+      errors: []
+    };
+  }
+
+  if (settings.pinterestEnvironment === "sandbox") {
+    logger.warn("PINTEREST", "Production queue paused while Sandbox environment is selected");
+    return {
+      mode: "publish",
+      selected: 0,
+      claimed: 0,
+      published: 0,
+      skippedDuplicates: 0,
+      failed: 0,
+      retried: 0,
+      dryRun: true,
+      pausedReason: "Production Pinterest queue is paused in Sandbox mode.",
       errors: []
     };
   }

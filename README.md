@@ -96,6 +96,9 @@ ETSY_REDIRECT_URI=
 ETSY_SHOP_ID=
 
 PINTEREST_ACCESS_TOKEN=
+PINTEREST_ENVIRONMENT=production
+PINTEREST_SANDBOX_ACCESS_TOKEN=
+PINTEREST_SANDBOX_BOARD_ID=
 PINTEREST_BOARD_ID=
 
 INSTAGRAM_ACCESS_TOKEN=
@@ -223,6 +226,13 @@ In `/settings`, save the Pinterest App ID, App secret, and redirect URI. Then cl
 `Connect Pinterest`, authorize the `boards:read`, `boards:write`, `pins:read`,
 and `pins:write` scopes, select the destination board, and save settings. Access and continuous
 refresh tokens are stored per user in Supabase and refreshed automatically.
+
+For isolated API testing, select `Sandbox` in `/settings`, paste a Sandbox
+access token, save, and select or enter a Sandbox board ID. Sandbox calls use
+`https://api-sandbox.pinterest.com/v5`. Automated Pinterest publishing is
+paused in this mode; **Publish Sandbox Test Pin** creates one test Pin without
+consuming or marking the production queue item. Switch back to `Production` to
+resume normal queue publishing.
 
 Vercel Cron calls:
 

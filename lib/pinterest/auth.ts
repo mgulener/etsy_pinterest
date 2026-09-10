@@ -9,6 +9,13 @@ import {
 
 const PINTEREST_OAUTH_COOKIE = "pinterest_oauth_state";
 const PINTEREST_TOKEN_URL = "https://api.pinterest.com/v5/oauth/token";
+export type PinterestApiEnvironment = "production" | "sandbox";
+
+export function getPinterestApiBaseUrl(environment: PinterestApiEnvironment) {
+  return environment === "sandbox"
+    ? "https://api-sandbox.pinterest.com/v5"
+    : "https://api.pinterest.com/v5";
+}
 export const PINTEREST_OAUTH_SCOPES = [
   "boards:read",
   "boards:write",
@@ -169,12 +176,24 @@ export async function handlePinterestOAuthCallback(request: Request) {
   (await cookies()).delete(PINTEREST_OAUTH_COOKIE);
 }
 
-export async function getPinterestAccessToken(userId?: string | null) {
+export async function getPinterestApiContext(userId?: string | null) {
   const session = userId ? null : await getCurrentSession();
   const resolvedUserId = userId ?? session?.userId;
   const settings = resolvedUserId
     ? await getSettingsForUser(resolvedUserId)
     : await getCurrentUserSettings();
+
+  if (settings.pinterestEnvironment === "sandbox") {
+    return {
+      environment: "sandbox" as const,
+      apiBaseUrl: getPinterestApiBaseUrl("sandbox"),
+      accessToken: requireSetting(
+        settings.pinterestSandboxAccessToken,
+        "Pinterest Sandbox access token"
+      ),
+      boardId: settings.pinterestSandboxBoardId
+    };
+  }
 
   if (!settings.pinterestAccessToken) {
     throw new Error("Missing Pinterest OAuth token. Connect Pinterest from Settings.");
@@ -184,7 +203,12 @@ export async function getPinterestAccessToken(userId?: string | null) {
     !settings.pinterestRefreshToken ||
     !shouldRefreshPinterestToken(settings.pinterestTokenExpiresAt)
   ) {
-    return settings.pinterestAccessToken;
+    return {
+      environment: "production" as const,
+      apiBaseUrl: getPinterestApiBaseUrl("production"),
+      accessToken: settings.pinterestAccessToken,
+      boardId: settings.pinterestBoardId
+    };
   }
 
   const token = await exchangeToken({
@@ -201,5 +225,14 @@ export async function getPinterestAccessToken(userId?: string | null) {
   }
 
   await saveToken(resolvedUserId, token, settings.pinterestRefreshToken);
-  return token.access_token;
+  return {
+    environment: "production" as const,
+    apiBaseUrl: getPinterestApiBaseUrl("production"),
+    accessToken: token.access_token,
+    boardId: settings.pinterestBoardId
+  };
+}
+
+export async function getPinterestAccessToken(userId?: string | null) {
+  return (await getPinterestApiContext(userId)).accessToken;
 }

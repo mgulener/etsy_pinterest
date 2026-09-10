@@ -6,15 +6,18 @@ import { getAllActiveListings } from "../lib/etsy/client";
 import { extractEtsyShopId } from "../lib/etsy/auth";
 import {
   buildPinterestAuthorizationUrl,
+  getPinterestApiBaseUrl,
   PINTEREST_OAUTH_SCOPES,
   shouldRefreshPinterestToken
 } from "../lib/pinterest/auth";
+import { resolvePinterestPublishBoardId } from "../lib/pinterest/client";
 import { normalizeEtsyListing } from "../lib/etsy/listings";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
 import { buildInstagramCaption, buildInstagramHashtags } from "../lib/instagram/caption";
 import { generateInstagramCaptionWithAI } from "../lib/instagram/aiCaption";
 import { createInstagramPost } from "../lib/instagram/posts";
+import { classifyPinterestListingsWithAI } from "../lib/pinterest/boardClassifier";
 import { getSeasonalQueuePriority } from "../lib/queue/scheduling";
 import { InstagramApiError } from "../lib/instagram/types";
 import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
@@ -434,6 +437,7 @@ test("Etsy sync runs as a durable background job", () => {
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0014_add_instagram_publish_job_type.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0017_instagram_single_image_only.sql")), true);
   assert.equal(existsSync(join(projectRoot, "supabase/migrations/0018_pinterest_oauth.sql")), true);
+  assert.equal(existsSync(join(projectRoot, "supabase/migrations/0020_pinterest_sandbox.sql")), true);
 });
 
 test("Pinterest OAuth requests only the publishing scopes and preserves state", () => {
@@ -465,6 +469,38 @@ test("Pinterest OAuth refreshes only expired access tokens", () => {
   assert.equal(shouldRefreshPinterestToken(now + 1, now), false);
   assert.equal(shouldRefreshPinterestToken(now, now), true);
   assert.equal(shouldRefreshPinterestToken(now - 1, now), true);
+});
+
+test("Pinterest Sandbox uses an isolated API host and board", () => {
+  assert.equal(
+    getPinterestApiBaseUrl("sandbox"),
+    "https://api-sandbox.pinterest.com/v5"
+  );
+  assert.equal(
+    getPinterestApiBaseUrl("production"),
+    "https://api.pinterest.com/v5"
+  );
+  assert.equal(
+    resolvePinterestPublishBoardId("production-board", {
+      environment: "sandbox",
+      boardId: "sandbox-board"
+    }),
+    "sandbox-board"
+  );
+  assert.equal(
+    resolvePinterestPublishBoardId("production-board", {
+      environment: "production",
+      boardId: "production-default"
+    }),
+    "production-board"
+  );
+  assert.throws(
+    () => resolvePinterestPublishBoardId("production-board", {
+      environment: "sandbox",
+      boardId: null
+    }),
+    /Sandbox board/
+  );
 });
 
 test("queue action UI uses icons and enabled platform settings", () => {
@@ -671,6 +707,81 @@ test("Pinterest board resolution falls back for listings without a mapped sectio
   assert.equal(resolvePinterestBoardId({ etsyShopSectionId: 12 }, mappings, "fallback"), "section-board");
   assert.equal(resolvePinterestBoardId({ etsyShopSectionId: 99 }, mappings, "fallback"), "fallback");
   assert.equal(resolvePinterestBoardId({ etsyShopSectionId: null }, mappings, "fallback"), "fallback");
+});
+
+test("AI board classification uses allowed boards and safely falls back for missing assignments", async () => {
+  const assignments = await classifyPinterestListingsWithAI({
+    listings: [
+      {
+        etsyListingId: 101,
+        title: "Kawaii Ghost Trio Halloween Tee",
+        description: "Spooky season shirt"
+      },
+      {
+        etsyListingId: 102,
+        title: "Uncategorized Graphic Tee",
+        description: null
+      }
+    ],
+    boards: [
+      { id: "halloween-board", name: "Halloween & Spooky" },
+      { id: "fallback-board", name: "All Products" }
+    ],
+    fallbackBoardId: "fallback-board",
+    apiKey: "test-key",
+    model: "gpt-test",
+    fetchImpl: async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.deepEqual(
+        body.text.format.schema.properties.assignments.items.properties.boardName.enum,
+        ["Halloween & Spooky", "All Products"]
+      );
+      const classificationInput = JSON.parse(body.input[1].content);
+      assert.match(classificationInput.boardGuidance["Halloween & Spooky"], /ghosts/i);
+      assert.match(classificationInput.boardGuidance["All Products"], /Fallback only/i);
+      return new Response(JSON.stringify({
+        output_text: JSON.stringify({
+          assignments: [
+            { etsyListingId: 101, boardName: "Halloween & Spooky" },
+            { etsyListingId: 999, boardName: "Halloween & Spooky" }
+          ]
+        })
+      }));
+    }
+  });
+
+  assert.equal(assignments.get(101), "halloween-board");
+  assert.equal(assignments.get(102), "fallback-board");
+  assert.equal(assignments.has(999), false);
+});
+
+test("Pinterest board classification enforces explicit holiday and audience rules", async () => {
+  let aiCalls = 0;
+  const assignments = await classifyPinterestListingsWithAI({
+    listings: [
+      { etsyListingId: 201, title: "Funny Dinosaur Valentine Shirt", description: null },
+      { etsyListingId: 202, title: "Baby Boy Boho Tee", description: "A cute toddler shirt" }
+    ],
+    boards: [
+      { id: "seasonal", name: "Seasonal & Holidays" },
+      { id: "mom", name: "Mom & Grandma" },
+      { id: "fallback", name: "All Products" }
+    ],
+    fallbackBoardId: "fallback",
+    apiKey: "test-key",
+    fetchImpl: async () => {
+      aiCalls += 1;
+      return new Response(JSON.stringify({
+        output_text: JSON.stringify({
+          assignments: [{ etsyListingId: 202, boardName: "Mom & Grandma" }]
+        })
+      }));
+    }
+  });
+
+  assert.equal(assignments.get(201), "seasonal");
+  assert.equal(assignments.get(202), "fallback");
+  assert.equal(aiCalls, 1);
 });
 
 test("new listing enters the Instagram queue when enabled", async () => {
