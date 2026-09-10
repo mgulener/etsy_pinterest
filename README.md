@@ -221,8 +221,8 @@ https://YOUR-VERCEL-DOMAIN.vercel.app/api/auth/pinterest/callback
 ```
 
 In `/settings`, save the Pinterest App ID, App secret, and redirect URI. Then click
-`Connect Pinterest`, authorize the `boards:read`, `pins:read`, and `pins:write`
-scopes, select the destination board, and save settings. Access and continuous
+`Connect Pinterest`, authorize the `boards:read`, `boards:write`, `pins:read`,
+and `pins:write` scopes, select the destination board, and save settings. Access and continuous
 refresh tokens are stored per user in Supabase and refreshed automatically.
 
 Vercel Cron calls:

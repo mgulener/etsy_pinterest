@@ -9,7 +9,12 @@ import {
 
 const PINTEREST_OAUTH_COOKIE = "pinterest_oauth_state";
 const PINTEREST_TOKEN_URL = "https://api.pinterest.com/v5/oauth/token";
-export const PINTEREST_OAUTH_SCOPES = ["boards:read", "pins:read", "pins:write"];
+export const PINTEREST_OAUTH_SCOPES = [
+  "boards:read",
+  "boards:write",
+  "pins:read",
+  "pins:write"
+];
 
 type PinterestOAuthCookie = {
   state: string;

@@ -444,6 +444,12 @@ test("Pinterest OAuth requests only the publishing scopes and preserves state", 
   assert.equal(url.searchParams.get("response_type"), "code");
   assert.equal(url.searchParams.get("scope"), PINTEREST_OAUTH_SCOPES.join(","));
   assert.equal(url.searchParams.get("state"), "state-value");
+  assert.deepEqual(PINTEREST_OAUTH_SCOPES, [
+    "boards:read",
+    "boards:write",
+    "pins:read",
+    "pins:write"
+  ]);
 });
 
 test("Pinterest OAuth refreshes only expired access tokens", () => {
