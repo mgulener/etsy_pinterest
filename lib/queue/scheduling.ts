@@ -3,18 +3,22 @@ import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 export const DEFAULT_QUEUE_INTERVAL_MINUTES = 15;
 
 const EVENT_RULES: Array<{ priority: number; pattern: RegExp }> = [
-  { priority: 10, pattern: /\b(september|patriot(?:'s)? day|9[\s/-]?11|grandparents?(?:'s)? day|labor day|back[ -]to[ -]school|first day of school)\b/i },
-  { priority: 20, pattern: /\b(october|halloween|breast cancer|pink ribbon)\b/i },
-  { priority: 30, pattern: /\b(november|thanksgiving|friendsgiving|turkeys?|veterans?(?:'s)? day|black friday)\b/i },
-  { priority: 40, pattern: /\b(december|christmas|xmas|holidays?|ornaments?|santa|hanukkah|new year)\b/i }
+  { priority: 10, pattern: /\b(october|halloween)\b/i },
+  { priority: 12, pattern: /\b(breast cancer|pink ribbon)\b/i },
+  { priority: 20, pattern: /\b(november|thanksgiving|friendsgiving|turkeys?|veterans?(?:'s)? day|black friday)\b/i },
+  { priority: 30, pattern: /\b(december|christmas|xmas|holidays?|ornaments?|santa|hanukkah)\b/i },
+  { priority: 40, pattern: /\b(new year(?:'s)?|new years eve|nye)\b/i },
+  { priority: 50, pattern: /\b(september|patriot(?:'s)? day|9[\s/-]?11|grandparents?(?:'s)? day|labor day)\b/i },
+  { priority: 70, pattern: /\b(?:100|one hundred|hundred)(?:th)?[ -]days?(?:[ -]of[ -]school)?\b|\b100th[ -]day(?:[ -]of[ -]school)?\b/i },
+  { priority: 60, pattern: /\b(back[ -]to[ -]school|first day of school)\b/i }
 ];
 
 const SEASONAL_FALLBACK_RULES: Array<{ priority: number; pattern: RegExp }> = [
-  { priority: 12, pattern: /\b(school|teacher|classroom)\b/i },
-  { priority: 15, pattern: /\b(fall|autumn)\b/i },
-  { priority: 25, pattern: /\b(spooky|pumpkins?|ghosts?|witch(?:es)?|costumes?)\b/i },
-  { priority: 35, pattern: /\bharvest\b/i },
-  { priority: 45, pattern: /\bwinter\b/i }
+  { priority: 10, pattern: /\b(spooky|ghosts?|witch(?:es)?|costumes?|skeletons?|skulls?|haunted|horror|boo)\b|\btrick[ -]or[ -]treat\b|\bjack[ -]o[ -]lanterns?\b/i },
+  { priority: 15, pattern: /\b(fall|autumn|pumpkins?)\b/i },
+  { priority: 25, pattern: /\bharvest\b/i },
+  { priority: 45, pattern: /\bwinter\b/i },
+  { priority: 65, pattern: /\b(school|teacher|classroom)\b/i }
 ];
 
 export function getSeasonalQueuePriority(listing: Pick<NormalizedEtsyListing, "title" | "description" | "originalCreationTimestamp">) {

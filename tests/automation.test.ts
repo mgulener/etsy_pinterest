@@ -578,7 +578,7 @@ test("new listings are queued by seasonal priority with 15 minute schedule spaci
     etsy: {
       getAllActiveListings: async () => [
         { ...etsyListing(201), title: "Christmas Ornament", original_creation_timestamp: 100 },
-        { ...etsyListing(202), title: "September Classroom Decor", original_creation_timestamp: 90 },
+        { ...etsyListing(202), title: "100 Days of School Decor", original_creation_timestamp: 90 },
         { ...etsyListing(203), title: "Halloween Party Sign", original_creation_timestamp: 80 }
       ]
     },
@@ -591,7 +591,7 @@ test("new listings are queued by seasonal priority with 15 minute schedule spaci
 
   assert.deepEqual(
     instagramQueueRepository.queued.map((item) => item.listing.etsyListingId),
-    [202, 203, 201]
+    [203, 201, 202]
   );
   assert.equal(getSeasonalQueuePriority(instagramQueueRepository.queued[0].listing), 10);
 
