@@ -1,8 +1,10 @@
-import { saveSettingsAction } from "./actions";
+import { saveSettingsAction, syncPinterestBoardsAction } from "./actions";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { listPinterestBoards, type PinterestBoard } from "@/lib/pinterest/client";
 import { getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
+import { createPinterestBoardMappingsRepository } from "@/lib/repositories/pinterestBoardMappingsRepository";
+import type { PinterestBoardMappingRow } from "@/lib/supabase/types";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +29,11 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const etsyStatus = getParam(params, "etsy");
   const etsyWarning = getParam(params, "warning");
   const pinterestStatus = getParam(params, "pinterest");
+  const pinterestSetup = getParam(params, "pinterestSetup");
+  const createdBoards = getParam(params, "createdBoards") ?? "0";
+  const queuedListings = getParam(params, "queued") ?? "0";
   let pinterestBoards: PinterestBoard[] = [];
+  let pinterestMappings: PinterestBoardMappingRow[] = [];
   let pinterestBoardsUnavailable = false;
 
   if (settings.pinterestAccessToken) {
@@ -37,6 +43,12 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       pinterestBoardsUnavailable = true;
       console.error("[PINTEREST_SETTINGS] Board discovery failed", error);
     }
+  }
+
+  try {
+    pinterestMappings = await createPinterestBoardMappingsRepository().listForUser(session.userId);
+  } catch (error) {
+    console.error("[PINTEREST_SETTINGS] Board mappings could not be loaded", error);
   }
 
   const canConnectPinterest = Boolean(
@@ -66,10 +78,20 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         <section className="alert alert-success" role="alert">Etsy connected successfully.</section>
       ) : null}
       {pinterestStatus === "connected" ? (
-        <section className="alert alert-success" role="alert">Pinterest connected successfully. Select a board and save settings.</section>
+        <section className="alert alert-success" role="alert">Pinterest connected successfully. Save settings, then sync Etsy sections to prepare the boards and queue.</section>
       ) : null}
       {pinterestStatus === "error" ? (
         <section className="alert alert-danger" role="alert">Pinterest connection failed. Check the App ID, secret, and exact redirect URI, then try again.</section>
+      ) : null}
+      {pinterestSetup === "ready" ? (
+        <section className="alert alert-success" role="alert">
+          Pinterest boards are ready. Created {createdBoards} boards and added {queuedListings} listings to the queue.
+        </section>
+      ) : null}
+      {pinterestSetup === "error" ? (
+        <section className="alert alert-danger" role="alert">
+          Pinterest board setup failed. Confirm that migration 0019 is applied and reconnect Pinterest if needed.
+        </section>
       ) : null}
 
       <form action={saveSettingsAction} className="settings-form">
@@ -233,6 +255,47 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <SubmitButton pendingText="Saving settings...">Save Settings</SubmitButton>
         </div>
       </form>
+
+      {settings.pinterestAccessToken ? (
+        <form action={syncPinterestBoardsAction} className="settings-form mt-3">
+          <section className="settings-section">
+            <div>
+              <h2>Board Mapping</h2>
+              <p>Create or match one Pinterest board for every Etsy shop section, then route existing products to the correct board.</p>
+            </div>
+            <div>
+              <div className="d-flex align-items-center gap-2 mb-3">
+                <SubmitButton className="btn btn-danger" pendingText="Preparing Pinterest boards...">
+                  Sync Etsy Sections &amp; Build Queue
+                </SubmitButton>
+                <span className="text-secondary small">Safe to run again; existing boards and queue items are reused.</span>
+              </div>
+              {pinterestMappings.length > 0 ? (
+                <div className="table-responsive">
+                  <table className="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Etsy section</th>
+                        <th>Pinterest board</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pinterestMappings.map((mapping) => (
+                        <tr key={mapping.id}>
+                          <td>{mapping.etsy_section_title}</td>
+                          <td>{mapping.pinterest_board_name}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-secondary">No Etsy section mappings have been created yet.</div>
+              )}
+            </div>
+          </section>
+        </form>
+      ) : null}
     </main>
   );
 }

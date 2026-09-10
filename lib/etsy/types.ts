@@ -9,6 +9,7 @@ export type EtsyImage = {
 
 export type EtsyListing = {
   listing_id: number;
+  shop_section_id?: number | null;
   title: string;
   description?: string;
   url?: string;
@@ -20,6 +21,18 @@ export type EtsyListing = {
   images?: EtsyImage[];
 };
 
+export type EtsyShopSection = {
+  shop_section_id: number;
+  title: string;
+  rank?: number;
+  active_listing_count?: number;
+};
+
+export type EtsyShopSectionsResponse = {
+  count: number;
+  results: EtsyShopSection[];
+};
+
 export type EtsyListingsResponse = {
   count: number;
   results: EtsyListing[];
@@ -27,6 +40,7 @@ export type EtsyListingsResponse = {
 
 export type NormalizedEtsyListing = {
   etsyListingId: number;
+  etsyShopSectionId: number | null;
   etsyImageId: number | null;
   imageUrl: string | null;
   imageUrls: string[];

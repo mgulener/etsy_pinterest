@@ -38,6 +38,7 @@ export function normalizeEtsyListing(listing: EtsyListing): NormalizedEtsyListin
 
   return {
     etsyListingId: listing.listing_id,
+    etsyShopSectionId: listing.shop_section_id ?? null,
     etsyImageId: primaryImage?.listing_image_id ?? null,
     imageUrl: primaryImage?.url_fullxfull ?? primaryImage?.url_570xN ?? null,
     imageUrls,

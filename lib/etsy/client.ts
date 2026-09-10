@@ -1,6 +1,11 @@
 import { logger } from "@/lib/utils/logger";
 import { getEtsyAccessToken, getEtsyApiKey, getEtsyShopId } from "./auth";
-import type { EtsyListing, EtsyListingsResponse } from "./types";
+import type {
+  EtsyListing,
+  EtsyListingsResponse,
+  EtsyShopSection,
+  EtsyShopSectionsResponse
+} from "./types";
 
 const ETSY_API_URL = "https://api.etsy.com/v3/application";
 const ETSY_PAGE_LIMIT = 100;
@@ -61,4 +66,25 @@ export async function getAllActiveListings(userId?: string, maxListings?: number
   });
 
   return listings;
+}
+
+export async function getShopSections(userId?: string): Promise<EtsyShopSection[]> {
+  const accessToken = await getEtsyAccessToken(userId);
+  const apiKey = await getEtsyApiKey(userId);
+  const shopId = await getEtsyShopId(userId);
+  const response = await fetch(`${ETSY_API_URL}/shops/${shopId}/sections`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "x-api-key": apiKey
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Etsy shop sections request failed: ${response.status} ${body}`);
+  }
+
+  const data = (await response.json()) as EtsyShopSectionsResponse;
+  return data.results ?? [];
 }

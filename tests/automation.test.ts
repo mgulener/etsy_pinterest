@@ -20,6 +20,11 @@ import { InstagramApiError } from "../lib/instagram/types";
 import { publishInstagramPostsWithDependencies } from "../lib/services/publishInstagramPosts";
 import { publishPinterestPinsWithDependencies } from "../lib/services/publishPinterestPins";
 import { syncEtsyListingsWithDependencies } from "../lib/services/syncEtsyListings";
+import {
+  resolvePinterestBoardId,
+  syncPinterestBoardsWithDependencies
+} from "../lib/services/syncPinterestBoards";
+import type { PinterestBoardMappingsRepository } from "../lib/repositories/pinterestBoardMappingsRepository";
 import type {
   BootstrapSettingsRepository,
   InstagramPublisherPostsRepository,
@@ -74,6 +79,7 @@ class MemoryListingsRepository implements SyncListingsRepository {
     initialIds.forEach((id) => {
       this.listings.set(id, {
         etsyListingId: id,
+        etsyShopSectionId: null,
         etsyImageId: null,
         imageUrl: null,
         imageUrls: [],
@@ -104,15 +110,15 @@ class MemoryListingsRepository implements SyncListingsRepository {
 }
 
 class MemorySyncQueueRepository implements SyncQueueRepository {
-  queued: Array<{ listing: NormalizedEtsyListing; scheduledAt?: string }> = [];
+  queued: Array<{ listing: NormalizedEtsyListing; boardId: string; scheduledAt?: string }> = [];
   rebuilds = 0;
 
-  async enqueueListing(listing: NormalizedEtsyListing, _boardId: string, options?: { scheduledAt?: string }) {
+  async enqueueListing(listing: NormalizedEtsyListing, boardId: string, options?: { scheduledAt?: string }) {
     if (this.queued.some((item) => item.listing.etsyListingId === listing.etsyListingId)) {
       return "duplicate" as const;
     }
 
-    this.queued.push({ listing, scheduledAt: options?.scheduledAt });
+    this.queued.push({ listing, boardId, scheduledAt: options?.scheduledAt });
     return "created" as const;
   }
 
@@ -570,6 +576,103 @@ test("new listing enters the Pinterest queue", async () => {
   assert.equal(queueRepository.queued[0]?.listing.etsyListingId, 101);
 });
 
+test("Pinterest queue resolves the board from the Etsy section", async () => {
+  const listingsRepository = new MemoryListingsRepository();
+  const queueRepository = new MemorySyncQueueRepository();
+
+  await syncEtsyListingsWithDependencies({
+    etsy: {
+      getAllActiveListings: async () => [{ ...etsyListing(101), shop_section_id: 42 }]
+    },
+    listingsRepository,
+    queueRepository,
+    settingsRepository: new MemorySettingsRepository(true),
+    boardId: "fallback-board",
+    resolveBoardId: (listing) => listing.etsyShopSectionId === 42
+      ? "section-board"
+      : undefined
+  });
+
+  assert.equal(queueRepository.queued[0]?.boardId, "section-board");
+});
+
+test("Pinterest board sync retains, matches, and creates boards without duplicates", async () => {
+  const rows: Awaited<ReturnType<PinterestBoardMappingsRepository["listForUser"]>> = [
+    {
+      id: "mapping-1",
+      user_id: "user-1",
+      etsy_shop_section_id: 10,
+      etsy_section_title: "Halloween",
+      pinterest_board_id: "board-1",
+      pinterest_board_name: "Halloween",
+      created_at: new Date(0).toISOString(),
+      updated_at: new Date(0).toISOString()
+    }
+  ];
+  const mappingsRepository: PinterestBoardMappingsRepository = {
+    async listForUser() {
+      return [...rows];
+    },
+    async findBoardId(_userId, sectionId) {
+      return rows.find((row) => row.etsy_shop_section_id === sectionId)?.pinterest_board_id ?? null;
+    },
+    async upsert(mapping) {
+      const index = rows.findIndex(
+        (row) => row.etsy_shop_section_id === mapping.etsyShopSectionId
+      );
+      const row = {
+        id: index >= 0 ? rows[index].id : `mapping-${rows.length + 1}`,
+        user_id: mapping.userId,
+        etsy_shop_section_id: mapping.etsyShopSectionId,
+        etsy_section_title: mapping.etsySectionTitle,
+        pinterest_board_id: mapping.pinterestBoardId,
+        pinterest_board_name: mapping.pinterestBoardName,
+        created_at: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString()
+      };
+      if (index >= 0) rows[index] = row;
+      else rows.push(row);
+    }
+  };
+  const createdNames: string[] = [];
+
+  const result = await syncPinterestBoardsWithDependencies({
+    userId: "user-1",
+    sections: [
+      { shop_section_id: 10, title: "Halloween" },
+      { shop_section_id: 20, title: "  Christmas   Decor " },
+      { shop_section_id: 30, title: "Thanksgiving" }
+    ],
+    boards: [
+      { id: "board-1", name: "Halloween", privacy: "PUBLIC" },
+      { id: "board-2", name: "Christmas Decor", privacy: "PUBLIC" }
+    ],
+    mappingsRepository,
+    async createBoard(name) {
+      createdNames.push(name);
+      return { id: "board-3", name, privacy: "PUBLIC" };
+    }
+  });
+
+  assert.deepEqual(result, {
+    sections: 3,
+    createdBoards: 1,
+    matchedBoards: 1,
+    retainedMappings: 1
+  });
+  assert.deepEqual(createdNames, ["Thanksgiving"]);
+  assert.equal(rows.find((row) => row.etsy_shop_section_id === 20)?.pinterest_board_id, "board-2");
+  assert.equal(rows.find((row) => row.etsy_shop_section_id === 30)?.pinterest_board_id, "board-3");
+});
+
+test("Pinterest board resolution falls back for listings without a mapped section", () => {
+  const mappings = new Map([[12, "section-board"]]);
+
+  assert.equal(resolvePinterestBoardId({ etsyShopSectionId: 12 }, mappings, "fallback"), "section-board");
+  assert.equal(resolvePinterestBoardId({ etsyShopSectionId: 99 }, mappings, "fallback"), "fallback");
+  assert.equal(resolvePinterestBoardId({ etsyShopSectionId: null }, mappings, "fallback"), "fallback");
+});
+
 test("new listing enters the Instagram queue when enabled", async () => {
   const listingsRepository = new MemoryListingsRepository();
   const queueRepository = new MemorySyncQueueRepository();
@@ -711,6 +814,7 @@ test("a queue failure leaves a new listing eligible for the next sync", async ()
 test("Instagram captions use product-specific hashtags", () => {
   const listing: NormalizedEtsyListing = {
     etsyListingId: 101,
+    etsyShopSectionId: null,
     etsyImageId: 1101,
     imageUrl: "https://img.test/101.jpg",
     imageUrls: ["https://img.test/101.jpg"],
@@ -737,6 +841,7 @@ test("Instagram captions use product-specific hashtags", () => {
 test("AI Instagram captions use structured product-specific hashtags", async () => {
   const listing: NormalizedEtsyListing = {
     etsyListingId: 101,
+    etsyShopSectionId: null,
     etsyImageId: 1101,
     imageUrl: "https://img.test/101.jpg",
     imageUrls: ["https://img.test/101.jpg"],

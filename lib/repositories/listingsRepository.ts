@@ -28,6 +28,7 @@ export type ListingsRepository = {
 function toListingRow(listing: NormalizedEtsyListing) {
   return {
     etsy_listing_id: listing.etsyListingId,
+    etsy_shop_section_id: listing.etsyShopSectionId,
     etsy_image_id: listing.etsyImageId,
     image_url: listing.imageUrl,
     image_urls: listing.imageUrls,
@@ -128,6 +129,7 @@ export function createListingsRepository(): ListingsRepository {
         .from("etsy_listings")
         .update({
           etsy_image_id: listing.etsyImageId,
+          etsy_shop_section_id: listing.etsyShopSectionId,
           image_url: listing.imageUrl,
           image_urls: listing.imageUrls,
           title: listing.title,

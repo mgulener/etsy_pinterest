@@ -331,3 +331,19 @@ export async function savePinterestTokenForUser(input: {
     throw new Error(`Failed to save Pinterest OAuth token: ${error.message}`);
   }
 }
+
+export async function savePinterestBoardIdForUser(userId: string, boardId: string) {
+  const { error } = await getSupabaseAdmin()
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: userId,
+        pinterest_board_id: boardId
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    throw new Error(`Failed to save Pinterest default board: ${error.message}`);
+  }
+}

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/session";
 import { saveUserSettings } from "@/lib/repositories/userSettingsRepository";
+import { preparePinterestPublishingForUser } from "@/lib/services/syncPinterestBoards";
 
 function parsePositiveInteger(value: FormDataEntryValue | null, fallback: number) {
   const numberValue = Number(value ?? fallback);
@@ -41,4 +42,28 @@ export async function saveSettingsAction(formData: FormData) {
 
   revalidatePath("/settings");
   redirect("/settings?saved=1");
+}
+
+export async function syncPinterestBoardsAction() {
+  const session = await requireAdminSession();
+  let destination: string;
+
+  try {
+    const result = await preparePinterestPublishingForUser(session.userId);
+    const params = new URLSearchParams({
+      pinterestSetup: "ready",
+      sections: String(result.sections),
+      createdBoards: String(result.createdBoards),
+      queued: String(result.queued)
+    });
+    destination = `/settings?${params.toString()}`;
+  } catch (error) {
+    console.error("[PINTEREST_BOARD_SYNC] Setup failed", error);
+    destination = "/settings?pinterestSetup=error";
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/pinterest/queue");
+  revalidatePath("/etsy/listings");
+  redirect(destination);
 }

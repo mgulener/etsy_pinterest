@@ -86,6 +86,7 @@ export type UserSettingsRow = {
 export type EtsyListingRow = {
   id: string;
   etsy_listing_id: number;
+  etsy_shop_section_id: number | null;
   etsy_image_id: number | null;
   image_url: string | null;
   image_urls: Json;
@@ -96,6 +97,17 @@ export type EtsyListingRow = {
   original_creation_timestamp: number | null;
   first_seen_at: string;
   last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PinterestBoardMappingRow = {
+  id: string;
+  user_id: string;
+  etsy_shop_section_id: number;
+  etsy_section_title: string;
+  pinterest_board_id: string;
+  pinterest_board_name: string;
   created_at: string;
   updated_at: string;
 };
@@ -249,6 +261,23 @@ export type Database = {
         };
         Update: Partial<Omit<EtsyListingRow, "id" | "created_at">>;
         Relationships: [];
+      };
+      pinterest_board_mappings: {
+        Row: PinterestBoardMappingRow;
+        Insert: Omit<PinterestBoardMappingRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<PinterestBoardMappingRow, "id" | "user_id" | "created_at">>;
+        Relationships: [
+          {
+            foreignKeyName: "pinterest_board_mappings_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "admin_users";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       pin_queue: {
         Row: PinQueueRow;

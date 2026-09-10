@@ -14,6 +14,7 @@ import { runInstagramPublishJob } from "@/lib/services/instagramPublishJobRunner
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { createPinterestBoardMappingsRepository } from "@/lib/repositories/pinterestBoardMappingsRepository";
 import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import { getCurrentUserSettings, requireSetting } from "@/lib/repositories/userSettingsRepository";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -21,10 +22,12 @@ import { buildInstagramCaption } from "@/lib/instagram/caption";
 import { generateInstagramCaptionWithAI } from "@/lib/instagram/aiCaption";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import type { InstagramPostMode } from "@/lib/instagram/types";
+import { resolvePinterestBoardId } from "@/lib/services/syncPinterestBoards";
 
 
 function normalizeListingRow(listing: {
   etsy_listing_id: number;
+  etsy_shop_section_id: number | null;
   etsy_image_id: number | null;
   image_url: string | null;
   image_urls?: unknown;
@@ -42,6 +45,7 @@ function normalizeListingRow(listing: {
 
   return {
     etsyListingId: listing.etsy_listing_id,
+    etsyShopSectionId: listing.etsy_shop_section_id,
     etsyImageId: listing.etsy_image_id,
     imageUrl: listing.image_url,
     imageUrls,
@@ -188,16 +192,26 @@ export async function generateInstagramCaptionsAction(formData?: FormData) {
 
 
 export async function queuePinterestListingAction(formData: FormData) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
   const listing = await getListingForManualQueue(formData);
 
   if (listing) {
     const settings = await getCurrentUserSettings();
 
     if (settings.pinterestEnabled) {
+      const mappings = await createPinterestBoardMappingsRepository().listForUser(session.userId);
+      const boardBySectionId = new Map(
+        mappings.map((mapping) => [mapping.etsy_shop_section_id, mapping.pinterest_board_id])
+      );
+      const boardId = resolvePinterestBoardId(
+        listing,
+        boardBySectionId,
+        settings.pinterestBoardId
+      );
+
       await createPinQueueRepository().enqueueListing(
         listing,
-        requireSetting(settings.pinterestBoardId, "Pinterest board ID")
+        requireSetting(boardId ?? null, "Pinterest board ID")
       );
     }
   }
@@ -420,6 +434,7 @@ export async function queueInstagramPostAgainAction(formData: FormData) {
 
   const fallbackListing: NormalizedEtsyListing = {
     etsyListingId: post.etsy_listing_id,
+    etsyShopSectionId: null,
     etsyImageId: post.etsy_image_id,
     imageUrl: null,
     imageUrls: [],
@@ -432,6 +447,7 @@ export async function queueInstagramPostAgainAction(formData: FormData) {
   const normalizedListing: NormalizedEtsyListing = listing
     ? {
         etsyListingId: listing.etsy_listing_id,
+        etsyShopSectionId: listing.etsy_shop_section_id,
         etsyImageId: listing.etsy_image_id,
         imageUrl: listing.image_url,
         imageUrls: Array.isArray(listing.image_urls)

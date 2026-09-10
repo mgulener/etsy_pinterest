@@ -6,6 +6,7 @@ import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepos
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
+import { createPinterestBoardMappingsRepository } from "@/lib/repositories/pinterestBoardMappingsRepository";
 import { generateInstagramCaptionWithAI } from "@/lib/instagram/aiCaption";
 import { buildScheduledAt, getNextScheduleStart, sortListingsForQueue } from "@/lib/queue/scheduling";
 import { logger } from "@/lib/utils/logger";
@@ -16,6 +17,7 @@ import type {
   SyncListingsRepository,
   SyncQueueRepository
 } from "./types";
+import { resolvePinterestBoardId } from "./syncPinterestBoards";
 
 export type SyncProgress = {
   current: number;
@@ -41,6 +43,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   instagramQueueRepository?: InstagramSyncQueueRepository;
   settingsRepository: BootstrapSettingsRepository;
   boardId?: string;
+  resolveBoardId?: (listing: NormalizedEtsyListing) => string | undefined;
   onProgress?: (progress: SyncProgress) => Promise<void> | void;
   instagramCaptionGenerator?: (listing: NormalizedEtsyListing) => Promise<string>;
 }): Promise<SyncEtsyListingsResult> {
@@ -111,11 +114,13 @@ export async function syncEtsyListingsWithDependencies(input: {
     });
     const errorCountBeforeQueueing = errors.length;
 
-    if (input.queueRepository && input.boardId) {
+    const boardId = input.resolveBoardId?.(listing) ?? input.boardId;
+
+    if (input.queueRepository && boardId) {
       try {
         const queueResult = await input.queueRepository.enqueueListing(
           listing,
-          input.boardId,
+          boardId,
           { scheduledAt }
         );
 
@@ -222,7 +227,15 @@ export async function syncEtsyListingsForUser(
   maxListings?: number
 ) {
   const settings = await getSettingsForUser(userId);
-  const pinterestEnabled = Boolean(settings.pinterestEnabled && settings.pinterestBoardId);
+  const pinterestMappings = settings.pinterestEnabled
+    ? await createPinterestBoardMappingsRepository().listForUser(userId)
+    : [];
+  const boardBySectionId = new Map(
+    pinterestMappings.map((mapping) => [mapping.etsy_shop_section_id, mapping.pinterest_board_id])
+  );
+  const pinterestEnabled = Boolean(
+    settings.pinterestEnabled && (settings.pinterestBoardId || boardBySectionId.size > 0)
+  );
   const instagramEnabled = Boolean(
     settings.instagramEnabled &&
       settings.instagramAccessToken &&
@@ -238,6 +251,9 @@ export async function syncEtsyListingsForUser(
       : undefined,
     settingsRepository: createAppSettingsRepository(),
     boardId: pinterestEnabled ? settings.pinterestBoardId ?? undefined : undefined,
+    resolveBoardId: pinterestEnabled
+      ? (listing) => resolvePinterestBoardId(listing, boardBySectionId, settings.pinterestBoardId)
+      : undefined,
     onProgress,
     instagramCaptionGenerator: settings.aiCaptionsEnabled && settings.openaiApiKey
       ? (listing) => generateInstagramCaptionWithAI({
@@ -254,7 +270,15 @@ export async function syncEtsyListings(
   maxListings?: number
 ) {
   const settings = await getCurrentUserSettings();
-  const pinterestEnabled = Boolean(settings.pinterestEnabled && settings.pinterestBoardId);
+  const pinterestMappings = settings.pinterestEnabled && settings.userId
+    ? await createPinterestBoardMappingsRepository().listForUser(settings.userId)
+    : [];
+  const boardBySectionId = new Map(
+    pinterestMappings.map((mapping) => [mapping.etsy_shop_section_id, mapping.pinterest_board_id])
+  );
+  const pinterestEnabled = Boolean(
+    settings.pinterestEnabled && (settings.pinterestBoardId || boardBySectionId.size > 0)
+  );
   const instagramEnabled = Boolean(
     settings.instagramEnabled &&
       settings.instagramAccessToken &&
@@ -270,6 +294,9 @@ export async function syncEtsyListings(
       : undefined,
     settingsRepository: createAppSettingsRepository(),
     boardId: pinterestEnabled ? settings.pinterestBoardId ?? undefined : undefined,
+    resolveBoardId: pinterestEnabled
+      ? (listing) => resolvePinterestBoardId(listing, boardBySectionId, settings.pinterestBoardId)
+      : undefined,
     onProgress,
     instagramCaptionGenerator: settings.aiCaptionsEnabled && settings.openaiApiKey
       ? (listing) => generateInstagramCaptionWithAI({

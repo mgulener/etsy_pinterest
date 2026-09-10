@@ -9,6 +9,11 @@ export type PinterestBoard = {
   privacy: string;
 };
 
+export type CreatePinterestBoardInput = {
+  name: string;
+  description?: string;
+};
+
 export async function pinterestRequest<T>(path: string, init: RequestInit = {}, userId?: string | null) {
   const response = await fetch(`${PINTEREST_API_URL}${path}`, {
     ...init,
@@ -54,4 +59,17 @@ export async function listPinterestBoards(userId?: string | null) {
   );
 
   return response.items ?? [];
+}
+
+export async function createPinterestBoard(
+  input: CreatePinterestBoardInput,
+  userId?: string | null
+) {
+  return pinterestRequest<PinterestBoard>("/boards", {
+    method: "POST",
+    body: JSON.stringify({
+      name: input.name.slice(0, 180),
+      description: input.description?.slice(0, 500) ?? ""
+    })
+  }, userId);
 }

@@ -17,6 +17,11 @@ export type QueuePageResult = {
 export type PinQueueRepository = {
   countByStatus(status: PinQueueStatus): Promise<number>;
   enqueueListing(listing: NormalizedEtsyListing, boardId: string, options?: { scheduledAt?: string }): Promise<"created" | "duplicate">;
+  enqueueListings(items: Array<{
+    listing: NormalizedEtsyListing;
+    boardId: string;
+    scheduledAt?: string;
+  }>): Promise<number>;
   updateSchedule(id: string, scheduledAt: string): Promise<void>;
   rebuildPendingSchedule(intervalMinutes?: number): Promise<number>;
   listPending(limit: number): Promise<PinQueueRow[]>;
@@ -78,6 +83,68 @@ export function createPinQueueRepository(): PinQueueRepository {
       }
 
       return "created";
+    },
+
+    async enqueueListings(items) {
+      if (items.length === 0) {
+        return 0;
+      }
+
+      let created = 0;
+      const chunkSize = 200;
+
+      for (let index = 0; index < items.length; index += chunkSize) {
+        const chunk = items.slice(index, index + chunkSize);
+        const listingIds = chunk.map(({ listing }) => listing.etsyListingId);
+        const { data: publishedRows, error: publishedError } = await supabase
+          .from("pinterest_posts")
+          .select("etsy_listing_id")
+          .in("etsy_listing_id", listingIds);
+
+        if (publishedError) {
+          throw new Error(`Failed to check published Pinterest listings: ${publishedError.message}`);
+        }
+
+        const publishedIds = new Set(
+          publishedRows?.map((row) => row.etsy_listing_id) ?? []
+        );
+        const unpublishedChunk = chunk.filter(
+          ({ listing }) => !publishedIds.has(listing.etsyListingId)
+        );
+
+        if (unpublishedChunk.length === 0) {
+          continue;
+        }
+
+        const { data, error } = await supabase
+          .from("pin_queue")
+          .upsert(
+            unpublishedChunk.map(({ listing, boardId, scheduledAt }) => ({
+              etsy_listing_id: listing.etsyListingId,
+              etsy_image_id: listing.etsyImageId,
+              image_url: listing.imageUrl,
+              title: listing.title,
+              description: listing.description,
+              destination_url: listing.destinationUrl,
+              board_id: boardId,
+              scheduled_at: scheduledAt ?? new Date().toISOString(),
+              schedule_locked: false
+            })),
+            {
+              onConflict: "etsy_listing_id",
+              ignoreDuplicates: true
+            }
+          )
+          .select("etsy_listing_id");
+
+        if (error) {
+          throw new Error(`Failed to batch enqueue Pinterest listings: ${error.message}`);
+        }
+
+        created += data?.length ?? 0;
+      }
+
+      return created;
     },
 
     async updateSchedule(id, scheduledAt) {

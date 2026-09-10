@@ -129,16 +129,15 @@ Instagram queueing is enabled automatically when `INSTAGRAM_ACCESS_TOKEN` and ei
 
 1. Create a Supabase project.
 2. Open the SQL editor or use the Supabase CLI.
-3. Run `supabase/migrations/0001_initial_schema.sql`.
-4. Run `supabase/migrations/0002_instagram_publishing.sql`.
-5. Run `supabase/migrations/0003_instagram_publishing_details.sql`.
-6. Add `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to local and Vercel environments.
+3. Run every SQL file in `supabase/migrations/` in numeric order.
+4. Add `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to local and Vercel environments.
 
 The migration creates:
 
 - `etsy_listings`
 - `pin_queue`
 - `pinterest_posts`
+- `pinterest_board_mappings`
 - `instagram_queue`
 - `instagram_posts`
 - `app_settings`
@@ -350,7 +349,7 @@ to:
 UNIQUE(etsy_listing_id, etsy_image_id)
 ```
 
-The Pinterest client accepts a generic `createPin({ boardId, imageUrl, title, description, destinationUrl })` input, so future board routing, AI-generated SEO text, multiple images, and UTM tracking can be added without coupling Pinterest publishing to Etsy response objects.
+Pinterest boards are mapped to stable Etsy shop section IDs in `pinterest_board_mappings`. Run **Sync Etsy Sections & Build Queue** in Settings after connecting Pinterest. Existing boards with matching names are reused, missing boards are created, and sectionless products use the configured fallback board.
 
 
 ### Instagram publish verification
