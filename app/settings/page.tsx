@@ -1,4 +1,5 @@
 import {
+  createPinterestSandboxBoardAction,
   redistributePinterestQueueAction,
   saveSettingsAction,
   syncPinterestBoardsAction,
@@ -42,6 +43,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
   const movedListings = getParam(params, "moved") ?? "0";
   const fallbackListings = getParam(params, "fallback") ?? "0";
   const pinterestSandboxTest = getParam(params, "pinterestSandboxTest");
+  const pinterestSandboxBoard = getParam(params, "pinterestSandboxBoard");
+  const sandboxBoardId = getParam(params, "board");
   const sandboxTestListing = getParam(params, "listing");
   const sandboxTestPin = getParam(params, "pin");
   let pinterestBoards: PinterestBoard[] = [];
@@ -107,6 +110,16 @@ export default async function SettingsPage({ searchParams }: PageProps) {
       {pinterestSandboxTest === "error" ? (
         <section className="alert alert-danger" role="alert">
           Sandbox test Pin failed. Confirm the Sandbox token and board ID, then try again.
+        </section>
+      ) : null}
+      {pinterestSandboxBoard === "ready" ? (
+        <section className="alert alert-success" role="alert">
+          Sandbox test board is ready. Board ID: {sandboxBoardId}
+        </section>
+      ) : null}
+      {pinterestSandboxBoard === "error" ? (
+        <section className="alert alert-danger" role="alert">
+          Sandbox board could not be created. Confirm the Sandbox token and try again.
         </section>
       ) : null}
       {pinterestSetup === "ready" ? (
@@ -348,11 +361,22 @@ export default async function SettingsPage({ searchParams }: PageProps) {
             <h2>Sandbox Test</h2>
             <p>Create one real Sandbox Pin from the next pending product without changing its production queue status.</p>
           </div>
-          <form action={testPinterestSandboxPinAction}>
-            <SubmitButton className="btn btn-warning" pendingText="Creating Sandbox Pin...">
-              Publish Sandbox Test Pin
-            </SubmitButton>
-          </form>
+          <div className="d-flex gap-2 flex-wrap">
+            {!settings.pinterestSandboxBoardId ? (
+              <form action={createPinterestSandboxBoardAction}>
+                <SubmitButton className="btn btn-outline-warning" pendingText="Creating Sandbox board...">
+                  Create Sandbox Test Board
+                </SubmitButton>
+              </form>
+            ) : null}
+            {settings.pinterestSandboxBoardId ? (
+              <form action={testPinterestSandboxPinAction}>
+                <SubmitButton className="btn btn-warning" pendingText="Creating Sandbox Pin...">
+                  Publish Sandbox Test Pin
+                </SubmitButton>
+              </form>
+            ) : null}
+          </div>
         </section>
       ) : null}
 

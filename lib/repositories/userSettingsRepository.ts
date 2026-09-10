@@ -365,3 +365,19 @@ export async function savePinterestBoardIdForUser(userId: string, boardId: strin
     throw new Error(`Failed to save Pinterest default board: ${error.message}`);
   }
 }
+
+export async function savePinterestSandboxBoardIdForUser(userId: string, boardId: string) {
+  const { error } = await getSupabaseAdmin()
+    .from("user_settings")
+    .upsert(
+      {
+        user_id: userId,
+        pinterest_sandbox_board_id: boardId
+      },
+      { onConflict: "user_id" }
+    );
+
+  if (error) {
+    throw new Error(`Failed to save Pinterest Sandbox board: ${error.message}`);
+  }
+}

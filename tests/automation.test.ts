@@ -10,7 +10,10 @@ import {
   PINTEREST_OAUTH_SCOPES,
   shouldRefreshPinterestToken
 } from "../lib/pinterest/auth";
-import { resolvePinterestPublishBoardId } from "../lib/pinterest/client";
+import {
+  collectPinterestBoardPages,
+  resolvePinterestPublishBoardId
+} from "../lib/pinterest/client";
 import { normalizeEtsyListing } from "../lib/etsy/listings";
 import type { EtsyListing, NormalizedEtsyListing } from "../lib/etsy/types";
 import { bootstrapExistingListingsWithDependencies } from "../lib/services/bootstrap";
@@ -501,6 +504,23 @@ test("Pinterest Sandbox uses an isolated API host and board", () => {
     }),
     /Sandbox board/
   );
+});
+
+test("Pinterest Sandbox board listing follows empty bookmarked pages", async () => {
+  const requestedBookmarks: Array<string | undefined> = [];
+  const boards = await collectPinterestBoardPages(async (bookmark) => {
+    requestedBookmarks.push(bookmark);
+    if (!bookmark) {
+      return { items: [], bookmark: "next-page" };
+    }
+    return {
+      items: [{ id: "sandbox-board", name: "Sandbox Test", privacy: "PUBLIC" }],
+      bookmark: null
+    };
+  });
+
+  assert.deepEqual(requestedBookmarks, [undefined, "next-page"]);
+  assert.equal(boards[0]?.id, "sandbox-board");
 });
 
 test("queue action UI uses icons and enabled platform settings", () => {

@@ -15,6 +15,11 @@ export type CreatePinterestBoardInput = {
   description?: string;
 };
 
+type PinterestBoardsPage = {
+  items?: PinterestBoard[];
+  bookmark?: string | null;
+};
+
 type PinterestApiContext = {
   environment: PinterestApiEnvironment;
   apiBaseUrl: string;
@@ -82,14 +87,43 @@ export async function createPin(input: CreatePinInput, userId?: string | null): 
   return { id: response.id };
 }
 
-export async function listPinterestBoards(userId?: string | null) {
-  const response = await pinterestRequest<{ items?: PinterestBoard[] }>(
-    "/boards?page_size=100",
-    {},
-    userId
-  );
+export async function collectPinterestBoardPages(
+  fetchPage: (bookmark?: string) => Promise<PinterestBoardsPage>
+) {
+  const boards: PinterestBoard[] = [];
+  const seenBookmarks = new Set<string>();
+  let bookmark: string | undefined;
 
-  return response.items ?? [];
+  while (true) {
+    const response = await fetchPage(bookmark);
+    boards.push(...(response.items ?? []));
+
+    if (!response.bookmark || seenBookmarks.has(response.bookmark)) {
+      break;
+    }
+
+    seenBookmarks.add(response.bookmark);
+    bookmark = response.bookmark;
+  }
+
+  return boards;
+}
+
+export async function listPinterestBoards(userId?: string | null) {
+  const context = await getPinterestApiContext(userId);
+
+  return collectPinterestBoardPages((bookmark) => {
+    const params = new URLSearchParams({ page_size: "250" });
+    if (bookmark) {
+      params.set("bookmark", bookmark);
+    }
+
+    return pinterestRequestWithContext<PinterestBoardsPage>(
+      `/boards?${params.toString()}`,
+      {},
+      context
+    );
+  });
 }
 
 export async function createPinterestBoard(
@@ -97,9 +131,6 @@ export async function createPinterestBoard(
   userId?: string | null
 ) {
   const context = await getPinterestApiContext(userId);
-  if (context.environment === "sandbox") {
-    throw new Error("Pinterest Sandbox does not support creating boards through this setup.");
-  }
 
   return pinterestRequestWithContext<PinterestBoard>("/boards", {
     method: "POST",

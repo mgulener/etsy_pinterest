@@ -5,8 +5,10 @@ import { redirect } from "next/navigation";
 import { requireAdminSession } from "@/lib/auth/session";
 import {
   getSettingsForUser,
+  savePinterestSandboxBoardIdForUser,
   saveUserSettings
 } from "@/lib/repositories/userSettingsRepository";
+import { createPinterestBoard, listPinterestBoards } from "@/lib/pinterest/client";
 import {
   preparePinterestPublishingForUser,
   redistributeFallbackPinterestQueueForUser
@@ -123,6 +125,35 @@ export async function testPinterestSandboxPinAction() {
   } catch (error) {
     console.error("[PINTEREST_SANDBOX] Test Pin failed", error);
     destination = "/settings?pinterestSandboxTest=error";
+  }
+
+  revalidatePath("/settings");
+  redirect(destination);
+}
+
+export async function createPinterestSandboxBoardAction() {
+  const session = await requireAdminSession();
+  let destination: string;
+
+  try {
+    const settings = await getSettingsForUser(session.userId);
+    if (settings.pinterestEnvironment !== "sandbox" || !settings.pinterestSandboxAccessToken) {
+      throw new Error("Save the Sandbox environment and token first.");
+    }
+
+    const boardName = "TheCozyCedar Sandbox Test";
+    const boards = await listPinterestBoards(session.userId);
+    const existingBoard = boards.find((board) => board.name === boardName);
+    const board = existingBoard ?? await createPinterestBoard({
+      name: boardName,
+      description: "Isolated test Pins created by TheCozyCedar Social Automation."
+    }, session.userId);
+
+    await savePinterestSandboxBoardIdForUser(session.userId, board.id);
+    destination = `/settings?pinterestSandboxBoard=ready&board=${encodeURIComponent(board.id)}`;
+  } catch (error) {
+    console.error("[PINTEREST_SANDBOX] Board setup failed", error);
+    destination = "/settings?pinterestSandboxBoard=error";
   }
 
   revalidatePath("/settings");
