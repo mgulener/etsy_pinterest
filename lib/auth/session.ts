@@ -34,7 +34,7 @@ function base64UrlDecode(input: string) {
   return Buffer.from(padded, "base64").toString("utf8");
 }
 
-function getSessionSecret() {
+export function getSessionSecret() {
   return process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD || getRequiredEnv("CRON_SECRET");
 }
 

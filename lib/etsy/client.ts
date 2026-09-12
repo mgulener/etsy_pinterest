@@ -31,6 +31,7 @@ export async function getAllActiveListings(userId?: string, maxListings?: number
     url.searchParams.set("includes", "Images");
 
     const response = await fetch(url, {
+      method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "x-api-key": apiKey
@@ -73,6 +74,7 @@ export async function getShopSections(userId?: string): Promise<EtsyShopSection[
   const apiKey = await getEtsyApiKey(userId);
   const shopId = await getEtsyShopId(userId);
   const response = await fetch(`${ETSY_API_URL}/shops/${shopId}/sections`, {
+    method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "x-api-key": apiKey

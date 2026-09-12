@@ -6,6 +6,8 @@ import {
   testPinterestSandboxPinAction
 } from "./actions";
 import { SubmitButton } from "@/app/components/SubmitButton";
+import { EtsyPermissions } from "./EtsyPermissions";
+import { hasEtsyListingWriteAccess } from "@/lib/etsy/oauth";
 import { requireAdminSession } from "@/lib/auth/session";
 import { listPinterestBoards, type PinterestBoard } from "@/lib/pinterest/client";
 import { getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
@@ -81,9 +83,6 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <h1>Settings</h1>
           <p>Connected account and publishing credentials for {session.email}.</p>
         </div>
-        <a className="button ghost-button" href="/api/auth/etsy/start">
-          Connect Etsy
-        </a>
       </div>
 
       {saved ? <section className="alert alert-success" role="alert">Settings saved.</section> : null}
@@ -142,6 +141,13 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           Pinterest board classification failed. Check the OpenAI setting and try again.
         </section>
       ) : null}
+
+      <EtsyPermissions
+        connected={Boolean(settings.etsyAccessToken)}
+        scopeKnown={settings.etsyTokenScope !== null}
+        writeAccess={Boolean(settings.etsyAccessToken) && hasEtsyListingWriteAccess(settings.etsyTokenScope)}
+        canConnect={Boolean(settings.etsyApiKey)}
+      />
 
       <form action={saveSettingsAction} className="settings-form">
         <section className="settings-section">

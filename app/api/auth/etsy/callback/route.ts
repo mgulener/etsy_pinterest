@@ -24,7 +24,7 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.redirect(new URL("/dashboard?etsy=connected", request.url));
+    return settingsRedirect(request, { etsy: "connected" });
   } catch (error) {
     console.error("[ETSY_OAUTH] Callback failed", error);
     return settingsRedirect(request, {

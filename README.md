@@ -192,7 +192,23 @@ ETSY_API_KEY=keystring:shared_secret
 ETSY_REDIRECT_URI=https://YOUR-VERCEL-DOMAIN.vercel.app/api/auth/etsy/callback
 ```
 
-Sign in to the dashboard, click `Connect Etsy`, approve the requested `listings_r shops_r` scopes, and Etsy will redirect back to `/api/auth/etsy/callback`. The app stores the access and refresh token in Supabase `app_settings` under `etsy_oauth_token`.
+Sign in and open Settings. `Connect Etsy (read-only)` requests only `listings_r shops_r`.
+For listing edit access, select the separate approval checkbox and click `Enable Etsy write access`.
+This requests `listings_r shops_r listings_w` through an authenticated, same-origin POST and then Etsy's consent screen.
+Etsy does not offer a section-only scope: `listings_w` grants general listing edit access.
+No `listings_d`, `shops_w`, or transaction permissions are requested.
+
+The callback returns to Settings. Access tokens, refresh tokens and scope metadata are stored in
+Supabase `user_settings` for the signed-in user. Existing connections need reauthorization to add
+write access; refreshing a token does not add permissions. OAuth approval state is signed, expires
+after 10 minutes, and must match the current user and callback state.
+
+**Write access is not approval to change products.** This release adds permission setup only:
+there is no Etsy listing mutation endpoint or automatic application of section recommendations.
+Sync and cron continue to read Etsy. Before implementing a section change, require a separate
+review of exact listing IDs and old/new sections, explicit approval of that plan, server-side
+ownership and stale-plan checks, and an auditable result. Never treat OAuth consent as blanket
+approval for listing, price, title, inventory or section changes.
 
 ## Normal Etsy sync
 
