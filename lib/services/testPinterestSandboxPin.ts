@@ -1,4 +1,5 @@
 import { createPin } from "@/lib/pinterest/client";
+import { getPinDescription } from "@/lib/pinterest/description";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
 
@@ -33,7 +34,7 @@ export async function testPinterestSandboxPinForUser(userId: string) {
     boardId: settings.pinterestSandboxBoardId,
     imageUrl: item.image_url,
     title: item.title,
-    description: item.description || item.title,
+    description: getPinDescription(item),
     destinationUrl: item.destination_url
   }, userId);
 

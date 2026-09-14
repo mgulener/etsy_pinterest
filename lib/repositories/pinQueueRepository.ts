@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { paginateQueue } from "@/lib/queue/pagination";
+import { EDITABLE_PIN_STATUSES, validatePinDescription } from "@/lib/pinterest/description";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
 import {
   buildScheduledAt,
@@ -8,6 +9,7 @@ import {
   sortQueueRowsForPublishing
 } from "@/lib/queue/scheduling";
 import type { PinQueueRow, PinQueueStatus } from "@/lib/supabase/types";
+import { PINTEREST_AI_BATCH_SIZE, type PinterestDescriptionProduct } from "@/lib/pinterest/aiDescription";
 
 export type QueuePageResult = {
   rows: PinQueueRow[];
@@ -15,6 +17,8 @@ export type QueuePageResult = {
 };
 
 export type PinQueueRepository = {
+  findById(id: string): Promise<PinQueueRow | null>;
+  saveDescription(id: string, description: string, expectedUpdatedAt: string, source?: "ai" | "manual"): Promise<PinQueueRow | null>;
   countByStatus(status: PinQueueStatus): Promise<number>;
   enqueueListing(listing: NormalizedEtsyListing, boardId: string, options?: { scheduledAt?: string }): Promise<"created" | "duplicate">;
   enqueueListings(items: Array<{
@@ -46,10 +50,77 @@ export type PinQueueRepository = {
 
 const scheduleUpdateBatchSize = 25;
 
-export function createPinQueueRepository(): PinQueueRepository {
+export function createPinQueueRepository(options: {
+  generateDescriptions?: (products: PinterestDescriptionProduct[]) => Promise<Map<string, string>>;
+} = {}): PinQueueRepository {
   const supabase = getSupabaseAdmin();
 
+  const enqueue: PinQueueRepository["enqueueListings"] = async items => {
+    let created = 0;
+    const uniqueItems = [...new Map(items.map(item => [item.listing.etsyListingId, item])).values()];
+    for (let index = 0; index < uniqueItems.length; index += 200) {
+      const chunk = uniqueItems.slice(index, index + 200);
+      const ids = chunk.map(item => item.listing.etsyListingId);
+      const { data: published, error: publishedError } = await supabase.from("pinterest_posts")
+        .select("etsy_listing_id").in("etsy_listing_id", ids);
+      if (publishedError) throw new Error(`Failed to check published Pinterest listings: ${publishedError.message}`);
+      const { data: queued, error: queuedError } = await supabase.from("pin_queue")
+        .select("etsy_listing_id").in("etsy_listing_id", ids);
+      if (queuedError) throw new Error(`Failed to check queued Pinterest listings: ${queuedError.message}`);
+      const existing = new Set([...(published ?? []), ...(queued ?? [])].map(row => row.etsy_listing_id));
+      const missing = chunk.filter(item => !existing.has(item.listing.etsyListingId));
+      const batchSize = options.generateDescriptions ? PINTEREST_AI_BATCH_SIZE : 200;
+      for (let start = 0; start < missing.length; start += batchSize) {
+        const batch = missing.slice(start, start + batchSize);
+        const descriptions = await options.generateDescriptions?.(batch.map(({ listing }) => ({
+          id: String(listing.etsyListingId), title: listing.title, description: listing.description
+        })));
+        const { data, error } = await supabase.from("pin_queue").upsert(batch.map(({ listing, boardId, scheduledAt }) => ({
+          etsy_listing_id: listing.etsyListingId,
+          etsy_image_id: listing.etsyImageId,
+          image_url: listing.imageUrl,
+          title: listing.title,
+          description: listing.description,
+          ...(descriptions ? {
+            pin_description: validatePinDescription(descriptions.get(String(listing.etsyListingId))),
+            pin_description_source: "ai" as const,
+            pin_description_generated_at: new Date().toISOString()
+          } : {}),
+          destination_url: listing.destinationUrl,
+          board_id: boardId,
+          scheduled_at: scheduledAt ?? new Date().toISOString(),
+          schedule_locked: false
+        })), { onConflict: "etsy_listing_id", ignoreDuplicates: true }).select("etsy_listing_id");
+        if (error) throw new Error(`Failed to enqueue Pinterest listings: ${error.message}`);
+        created += data?.length ?? 0;
+      }
+    }
+    return created;
+  };
+
   return {
+    async findById(id) {
+      const { data, error } = await supabase.from("pin_queue").select("*").eq("id", id).maybeSingle();
+      if (error) throw new Error(`Failed to read Pinterest queue item: ${error.message}`);
+      return data;
+    },
+
+    async saveDescription(id, description, expectedUpdatedAt, source = "manual") {
+      const { data, error } = await supabase.from("pin_queue")
+        .update({
+          pin_description: validatePinDescription(description),
+          pin_description_source: source,
+          pin_description_generated_at: source === "ai" ? new Date().toISOString() : null
+        })
+        .eq("id", id)
+        .eq("updated_at", expectedUpdatedAt)
+        .in("status", EDITABLE_PIN_STATUSES)
+        .select("*")
+        .maybeSingle();
+      if (error) throw new Error(`Failed to save Pinterest description: ${error.message}`);
+      return data;
+    },
+
     async countByStatus(status) {
       const { count, error } = await supabase
         .from("pin_queue")
@@ -64,90 +135,10 @@ export function createPinQueueRepository(): PinQueueRepository {
     },
 
     async enqueueListing(listing, boardId, options) {
-      const { error } = await supabase.from("pin_queue").insert({
-        etsy_listing_id: listing.etsyListingId,
-        etsy_image_id: listing.etsyImageId,
-        image_url: listing.imageUrl,
-        title: listing.title,
-        description: listing.description,
-        destination_url: listing.destinationUrl,
-        board_id: boardId,
-        scheduled_at: options?.scheduledAt ?? new Date().toISOString(),
-        schedule_locked: false
-      });
-
-      if (error?.code === "23505") {
-        return "duplicate";
-      }
-
-      if (error) {
-        throw new Error(`Failed to enqueue Etsy listing ${listing.etsyListingId}: ${error.message}`);
-      }
-
-      return "created";
+      return await enqueue([{ listing, boardId, scheduledAt: options?.scheduledAt }]) > 0 ? "created" : "duplicate";
     },
 
-    async enqueueListings(items) {
-      if (items.length === 0) {
-        return 0;
-      }
-
-      let created = 0;
-      const chunkSize = 200;
-
-      for (let index = 0; index < items.length; index += chunkSize) {
-        const chunk = items.slice(index, index + chunkSize);
-        const listingIds = chunk.map(({ listing }) => listing.etsyListingId);
-        const { data: publishedRows, error: publishedError } = await supabase
-          .from("pinterest_posts")
-          .select("etsy_listing_id")
-          .in("etsy_listing_id", listingIds);
-
-        if (publishedError) {
-          throw new Error(`Failed to check published Pinterest listings: ${publishedError.message}`);
-        }
-
-        const publishedIds = new Set(
-          publishedRows?.map((row) => row.etsy_listing_id) ?? []
-        );
-        const unpublishedChunk = chunk.filter(
-          ({ listing }) => !publishedIds.has(listing.etsyListingId)
-        );
-
-        if (unpublishedChunk.length === 0) {
-          continue;
-        }
-
-        const { data, error } = await supabase
-          .from("pin_queue")
-          .upsert(
-            unpublishedChunk.map(({ listing, boardId, scheduledAt }) => ({
-              etsy_listing_id: listing.etsyListingId,
-              etsy_image_id: listing.etsyImageId,
-              image_url: listing.imageUrl,
-              title: listing.title,
-              description: listing.description,
-              destination_url: listing.destinationUrl,
-              board_id: boardId,
-              scheduled_at: scheduledAt ?? new Date().toISOString(),
-              schedule_locked: false
-            })),
-            {
-              onConflict: "etsy_listing_id",
-              ignoreDuplicates: true
-            }
-          )
-          .select("etsy_listing_id");
-
-        if (error) {
-          throw new Error(`Failed to batch enqueue Pinterest listings: ${error.message}`);
-        }
-
-        created += data?.length ?? 0;
-      }
-
-      return created;
-    },
+    enqueueListings: enqueue,
 
     async listPendingByBoard(boardId) {
       const pageSize = 1000;

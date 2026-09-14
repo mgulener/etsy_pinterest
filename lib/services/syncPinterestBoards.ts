@@ -13,6 +13,7 @@ import {
 } from "@/lib/repositories/pinterestBoardMappingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { createAutomaticPinterestDescriptionGenerator } from "@/lib/pinterest/automaticDescriptions";
 import {
   getSettingsForUser,
   savePinterestBoardIdForUser
@@ -210,7 +211,7 @@ export async function preparePinterestPublishingForUser(userId: string) {
   );
   const sortedListings = sortListingsForQueue(normalizedListings);
   const scheduleStart = getNextScheduleStart();
-  const queueRepository = createPinQueueRepository();
+  const queueRepository = createPinQueueRepository({ generateDescriptions: createAutomaticPinterestDescriptionGenerator(settings) });
   const queued = await queueRepository.enqueueListings(
     sortedListings.map((listing, index) => ({
       listing,

@@ -9,16 +9,19 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e:pinterest": "playwright test --config tests/browser/playwright.config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.55.0",
     "bootstrap": "^5.3.8",
+    "lucide-react": "^1.46.0",
     "next": "^16.3.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

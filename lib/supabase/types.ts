@@ -122,6 +122,9 @@ export type PinQueueRow = {
   image_url: string | null;
   title: string;
   description: string | null;
+  pin_description: string | null;
+  pin_description_source: "ai" | "manual" | null;
+  pin_description_generated_at: string | null;
   destination_url: string | null;
   board_id: string;
   status: PinQueueStatus;
@@ -284,8 +287,11 @@ export type Database = {
       };
       pin_queue: {
         Row: PinQueueRow;
-        Insert: Omit<PinQueueRow, "id" | "status" | "attempt_count" | "last_error" | "created_at" | "updated_at" | "processed_at"> & {
+        Insert: Omit<PinQueueRow, "id" | "status" | "attempt_count" | "last_error" | "created_at" | "updated_at" | "processed_at" | "pin_description" | "pin_description_source" | "pin_description_generated_at"> & {
           id?: string;
+          pin_description?: string | null;
+          pin_description_source?: "ai" | "manual" | null;
+          pin_description_generated_at?: string | null;
           status?: PinQueueStatus;
           attempt_count?: number;
           last_error?: string | null;

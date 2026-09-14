@@ -5,6 +5,7 @@ import { getCurrentUserSettings, getSettingsForUser } from "@/lib/repositories/u
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { createAutomaticPinterestDescriptionGenerator } from "@/lib/pinterest/automaticDescriptions";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createPinterestBoardMappingsRepository } from "@/lib/repositories/pinterestBoardMappingsRepository";
 import { generateInstagramCaptionWithAI } from "@/lib/instagram/aiCaption";
@@ -245,7 +246,7 @@ export async function syncEtsyListingsForUser(
   return syncEtsyListingsWithDependencies({
     etsy: { getAllActiveListings: () => getAllActiveListings(userId, maxListings) },
     listingsRepository: createListingsRepository(),
-    queueRepository: pinterestEnabled ? createPinQueueRepository() : undefined,
+    queueRepository: pinterestEnabled ? createPinQueueRepository({ generateDescriptions: createAutomaticPinterestDescriptionGenerator(settings) }) : undefined,
     instagramQueueRepository: instagramEnabled
       ? createInstagramQueueRepository()
       : undefined,
@@ -290,7 +291,7 @@ export async function syncEtsyListings(
   return syncEtsyListingsWithDependencies({
     etsy: { getAllActiveListings: () => getAllActiveListings(undefined, maxListings) },
     listingsRepository: createListingsRepository(),
-    queueRepository: pinterestEnabled ? createPinQueueRepository() : undefined,
+    queueRepository: pinterestEnabled ? createPinQueueRepository({ generateDescriptions: createAutomaticPinterestDescriptionGenerator(settings) }) : undefined,
     instagramQueueRepository: instagramEnabled
       ? createInstagramQueueRepository()
       : undefined,

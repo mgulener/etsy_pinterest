@@ -1,6 +1,7 @@
 import { getCurrentUserSettings, getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
 import { getPinterestAccessToken } from "@/lib/pinterest/auth";
 import { createPin } from "@/lib/pinterest/pins";
+import { getPinDescription } from "@/lib/pinterest/description";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
 import { buildScheduledAt } from "@/lib/queue/scheduling";
@@ -85,7 +86,7 @@ export async function publishPinterestPinsWithDependencies(input: {
         throw new Error("Queue item is missing image_url or destination_url");
       }
 
-      const description = item.description || item.title;
+      const description = getPinDescription(item);
 
       if (input.dryRun) {
         logger.info("DRY RUN", "Would publish Pinterest pin", {

@@ -13,6 +13,8 @@ import { SubmitButton } from "@/app/components/SubmitButton";
 import { requireAdminSession } from "@/lib/auth/session";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
 import type { PinQueueStatus } from "@/lib/supabase/types";
+import { canEditPinDescription, getPinDescription } from "@/lib/pinterest/description";
+import { DescriptionModalEditor } from "./DescriptionModalEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -134,6 +136,7 @@ export default async function QueuePage({ searchParams }: PageProps) {
           <thead>
             <tr>
               <th>Listing</th>
+              <th>Description</th>
               <th>Status</th>
               <th>Attempts</th>
               <th>Scheduled At</th>
@@ -163,6 +166,10 @@ export default async function QueuePage({ searchParams }: PageProps) {
                     </div>
                   </div>
                 </td>
+                <td className="caption-cell">
+                  <p className="caption-snippet mb-0">{getPinDescription(item)}</p>
+                  {item.pin_description_source === "ai" ? <span className="badge text-bg-info mt-1">AI</span> : null}
+                </td>
                 <td>
                   <span className={`badge ${item.status}`}>{item.status}</span>
                 </td>
@@ -175,6 +182,16 @@ export default async function QueuePage({ searchParams }: PageProps) {
                 <td>{formatDate(item.created_at)}</td>
                 <td>
                   <div className="d-flex justify-content-end align-items-center gap-2">
+                    {canEditPinDescription(item.status) ? (
+                      <DescriptionModalEditor
+                        key={item.updated_at}
+                        id={item.id}
+                        title={item.title}
+                        imageUrl={item.image_url}
+                        description={getPinDescription(item)}
+                        updatedAt={item.updated_at}
+                      />
+                    ) : null}
                     {item.status === "pending" || item.status === "failed" || item.status === "cancelled" ? (
                       <ScheduleButton
                         id={item.id}

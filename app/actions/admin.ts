@@ -14,6 +14,7 @@ import { runInstagramPublishJob } from "@/lib/services/instagramPublishJobRunner
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository";
+import { createAutomaticPinterestDescriptionGenerator } from "@/lib/pinterest/automaticDescriptions";
 import { createPinterestBoardMappingsRepository } from "@/lib/repositories/pinterestBoardMappingsRepository";
 import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import { getCurrentUserSettings, requireSetting } from "@/lib/repositories/userSettingsRepository";
@@ -209,7 +210,7 @@ export async function queuePinterestListingAction(formData: FormData) {
         settings.pinterestBoardId
       );
 
-      await createPinQueueRepository().enqueueListing(
+      await createPinQueueRepository({ generateDescriptions: createAutomaticPinterestDescriptionGenerator(settings) }).enqueueListing(
         listing,
         requireSetting(boardId ?? null, "Pinterest board ID")
       );

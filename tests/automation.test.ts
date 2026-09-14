@@ -177,6 +177,9 @@ function makeQueueItem(input: Partial<PinQueueRow> & { id: string; etsy_listing_
     image_url: input.image_url ?? `https://img.test/${input.etsy_listing_id}.jpg`,
     title: input.title ?? `Listing ${input.etsy_listing_id}`,
     description: input.description ?? `Description ${input.etsy_listing_id}`,
+    pin_description: input.pin_description ?? null,
+    pin_description_source: input.pin_description_source ?? null,
+    pin_description_generated_at: input.pin_description_generated_at ?? null,
     destination_url: input.destination_url ?? `https://etsy.test/listing/${input.etsy_listing_id}`,
     board_id: input.board_id ?? "board-1",
     status: input.status ?? "pending",
@@ -1211,6 +1214,25 @@ test("Pinterest API success creates a pinterest post", async () => {
   assert.equal(result.published, 1);
   assert.equal(postsRepository.posts.has(101), true);
   assert.equal(queueRepository.items[0]?.status, "published");
+});
+
+test("Pinterest publishing sends the approved description exactly, without overwriting Etsy text", async () => {
+  const approved = "A bookish Halloween design for spooky-season readers. Meet your next reading-day outfit.";
+  const rawDescription = "Raw Etsy product details. ".repeat(60);
+  const queueRepository = new MemoryPublisherQueueRepository([
+    makeQueueItem({ id: "approved-description", etsy_listing_id: 501, description: rawDescription, pin_description: approved })
+  ]);
+  const result = await publishPinterestPinsWithDependencies({
+    queueRepository,
+    postsRepository: new MemoryPostsRepository(),
+    pinterest: { createPin: async (input) => {
+      assert.equal(input.description, approved);
+      return { id: "pin-approved" };
+    } },
+    maxPinsPerRun: 1, maxRetries: 3, dryRun: false
+  });
+  assert.equal(result.published, 1);
+  assert.equal(queueRepository.items[0].description, rawDescription);
 });
 
 test("stale Instagram processing item is recovered before publishing", async () => {

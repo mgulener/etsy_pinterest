@@ -165,6 +165,19 @@ npm test
 npm run build
 ```
 
+Use Node.js 22 or newer for the current Supabase client. Pinterest description
+browser tests run against an isolated in-memory database and mocked AI responses;
+they block external service requests and never publish a real Pin:
+
+```bash
+npx playwright install chromium
+npm run test:e2e:pinterest
+```
+
+The browser test owns port 3107 and refuses to reuse an existing server. It covers
+draft generation without saving, cancellation, explicit save and reload,
+AI/save errors, keyboard focus, and desktop/mobile screenshots.
+
 ## Bootstrap flow
 
 On first production setup, keep `DRY_RUN=true`.
@@ -249,6 +262,51 @@ access token, save, and select or enter a Sandbox board ID. Sandbox calls use
 paused in this mode; **Publish Sandbox Test Pin** creates one test Pin without
 consuming or marking the production queue item. Switch back to `Production` to
 resume normal queue publishing.
+
+### Pinterest descriptions
+
+Before deploying the description editor and automatic generation, apply
+`supabase/migrations/0021_pinterest_descriptions.sql`, followed by
+`supabase/migrations/0022_pinterest_description_source.sql` in Supabase SQL Editor.
+This adds `pin_queue.pin_description` without changing existing data. The original
+Etsy text remains in `description`; sync does not overwrite approved Pinterest text.
+
+Use the blue edit icon in Pinterest Queue to edit a short description (our editorial
+limit is 500 characters). **Update With AI** uses the OpenAI key/model from Settings
+and changes only the modal draft. **Save** persists it and closes the modal;
+Cancel discards it. Publishing never calls AI.
+
+With AI enabled and an OpenAI key/model configured in Settings, new Pinterest
+queue entries receive an AI description before insertion. This applies to daily
+Etsy sync, manual queueing, and **Sync Etsy Sections & Build Queue**. Pinterest
+must be enabled to enqueue new products. Existing queue entries and published
+products are skipped before AI calls; manual descriptions are never overwritten.
+If AI fails during normal Etsy sync, the listing remains new so a later sync can
+retry it. Original Etsy descriptions and Etsy shop data remain unchanged.
+
+For an explicitly approved backfill, use Node.js 22+:
+
+```bash
+node --env-file=.env.local --import tsx scripts/generate-pinterest-descriptions.ts --run
+```
+
+Add `--limit=10` for a small first batch. This resolves the unique Etsy automation
+owner and processes only pending, failed, or cancelled rows with no saved
+description. Ten products per request, at most three requests concurrently.
+Each result is checkpointed in ignored `.local/` files before saving with a
+version/status guard. Re-running skips completed rows and reuses matching drafts
+after interrupted DB saves. AI-generated rows carry an `AI` badge; the manual
+editor still saves only after pressing Save. This backfill does not publish Pins.
+
+`POST /api/pinterest/queue/[id]/description` generates a draft;
+`PATCH` on the same path saves an approved description. Both require a same-origin,
+authenticated request from the unique connected Etsy shop owner, because the legacy
+queue is shop-wide. Pending, failed and cancelled items are editable. A version
+check prevents stale edits and saves racing a publish claim.
+
+Publishing and sandbox tests use the saved description verbatim. Rows without a
+saved description fall back to complete sentences from the Etsy description, or
+the title when the first sentence is too long. Previously published Pins are not updated.
 
 Vercel Cron calls:
 
