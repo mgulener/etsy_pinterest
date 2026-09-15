@@ -11,23 +11,32 @@ function validateCredentials(settings: Credentials) {
 
 async function graphRequest(settings: Credentials, path: string, body?: URLSearchParams, fetcher: typeof fetch = fetch) {
   validateCredentials(settings);
-  let response: Response;
-  let data: Record<string, unknown>;
-  try {
-    response = await fetcher(`https://graph.facebook.com/${settings.api_version}/${path}`, {
-      method: body ? "POST" : "GET",
-      headers: { Authorization: `Bearer ${settings.page_access_token}` },
-      body,
-      signal: AbortSignal.timeout(body ? 90_000 : 15_000),
-      cache: "no-store",
-      redirect: "error"
-    });
-    data = await response.json();
-    if (!data || typeof data !== "object") throw new Error("Invalid response");
-  } catch {
-    throw new FacebookError(body
-      ? "Facebook response was not confirmed. Check the Page before attempting another publication."
-      : "Facebook connection could not be verified. Check the Page token and try again.", Boolean(body), Boolean(body));
+  let response!: Response;
+  let data!: Record<string, unknown>;
+  // Only read-only verification may retry. A photo POST must never be resent here.
+  for (let attempt = 0; attempt < (body ? 1 : 2); attempt++) {
+    let status: number | undefined;
+    try {
+      response = await fetcher(`https://graph.facebook.com/${settings.api_version}/${path}`, {
+        method: body ? "POST" : "GET",
+        headers: { Authorization: `Bearer ${settings.page_access_token}` },
+        body,
+        signal: AbortSignal.timeout(body ? 90_000 : 25_000),
+        cache: "no-store",
+        redirect: "error"
+      });
+      status = response.status;
+      data = await response.json();
+      if (!data || typeof data !== "object") throw new Error("Invalid response");
+      break;
+    } catch (error) {
+      if (body) throw new FacebookError("Facebook response was not confirmed. Check the Page before attempting another publication.", true, true);
+      const kind = error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)
+        ? "timeout" : status !== undefined ? "invalid response" : "network error";
+      console.warn("[FACEBOOK] Verification transport failed", { kind, status, attempt: attempt + 1 });
+      if (attempt === 0) continue;
+      throw new FacebookError(`Facebook verification failed: ${kind}${status !== undefined ? ` (HTTP ${status})` : ""}. No settings were saved. Try again; this does not mean the token has expired.`);
+    }
   }
   if (!response.ok || data.error) {
     const code = typeof data.error === "object" && data.error !== null && "code" in data.error

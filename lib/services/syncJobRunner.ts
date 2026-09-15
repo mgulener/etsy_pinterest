@@ -25,7 +25,8 @@ export async function runEtsySyncJob(jobId: string, userId: string) {
     await jobsRepository.complete(
       jobId,
       result,
-      `Etsy sync finished. Fetched ${result.fetched}, known ${result.known}, Pinterest queued ${result.queued}, Instagram queued ${result.instagramQueued}, Facebook queued ${result.facebookQueued}, errors ${result.errors.length}.`
+      `Etsy sync finished. Fetched ${result.fetched}, known ${result.known}, Pinterest queued ${result.queued}, Instagram queued ${result.instagramQueued}, Facebook queued ${result.facebookQueued}, errors ${result.errors.length}.`,
+      result.errors.length ? `${result.errors.length} queue operations failed. Run Sync Etsy again to retry incomplete products.` : undefined
     );
   } catch (error) {
     const message = toErrorMessage(error);

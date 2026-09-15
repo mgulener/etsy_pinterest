@@ -79,6 +79,7 @@ test("all Pinterest enqueue paths generate before saving, protect existing text 
       etsy: { getAllActiveListings: async () => [{ listing_id: 7, title: "New shirt", description: "Product details", state: "active" }] },
       listingsRepository: {
         getExistingEtsyListingIds: async () => new Set<number>(),
+        savePendingListing: async () => {},
         upsertKnownListings: async () => {},
         upsertKnownListing: async () => { known = true; },
         updateLastSeen: async () => {}

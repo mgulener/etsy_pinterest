@@ -12,6 +12,7 @@ export type EtsyListingsSource = {
 
 export type SyncListingsRepository = {
   getExistingEtsyListingIds(ids: number[]): Promise<Set<number>>;
+  savePendingListing(listing: NormalizedEtsyListing): Promise<void>;
   upsertKnownListing(listing: NormalizedEtsyListing): Promise<void>;
   upsertKnownListings(listings: NormalizedEtsyListing[]): Promise<void>;
   updateLastSeen(listing: NormalizedEtsyListing): Promise<void>;

@@ -15,6 +15,7 @@ export type ListingsPageResult = {
 export type ListingsRepository = {
   count(): Promise<number>;
   getExistingEtsyListingIds(ids: number[]): Promise<Set<number>>;
+  savePendingListing(listing: NormalizedEtsyListing): Promise<void>;
   upsertKnownListing(listing: NormalizedEtsyListing): Promise<void>;
   upsertKnownListings(listings: NormalizedEtsyListing[]): Promise<void>;
   updateLastSeen(listing: NormalizedEtsyListing): Promise<void>;
@@ -69,6 +70,7 @@ export function createListingsRepository(): ListingsRepository {
         const { data, error } = await supabase
           .from("etsy_listings")
           .select("etsy_listing_id")
+          .eq("social_sync_pending", false)
           .in("etsy_listing_id", chunk);
 
         if (error) {
@@ -81,11 +83,19 @@ export function createListingsRepository(): ListingsRepository {
       return existing;
     },
 
+    async savePendingListing(listing) {
+      const { error } = await supabase.from("etsy_listings").upsert({
+        ...toListingRow(listing), social_sync_pending: true
+      }, { onConflict: "etsy_listing_id", ignoreDuplicates: true });
+      if (error) throw new Error(`Failed to prepare Etsy listing ${listing.etsyListingId}: ${error.message}`);
+    },
+
     async upsertKnownListing(listing) {
       const now = new Date().toISOString();
       const { error } = await supabase.from("etsy_listings").upsert(
         {
           ...toListingRow(listing),
+          social_sync_pending: false,
           last_seen_at: now
         },
         {

@@ -14,12 +14,39 @@ export type SyncJobsRepository = {
   claimQueued(id: string): Promise<SyncJobRow | null>;
   requeue(id: string, progress: SyncJobProgressInput, result?: Json): Promise<void>;
   updateProgress(id: string, progress: SyncJobProgressInput): Promise<void>;
-  complete(id: string, result: Json, message: string): Promise<void>;
+  complete(id: string, result: Json, message: string, errorMessage?: string): Promise<void>;
   fail(id: string, error: string): Promise<void>;
 };
 
-export function createSyncJobsRepository(): SyncJobsRepository {
-  const supabase = getSupabaseAdmin();
+// Vercel workers have a 5-minute budget; allow another 5 minutes without progress.
+const ETSY_SYNC_STALE_MS = 10 * 60_000;
+
+export function createSyncJobsRepository(supabase = getSupabaseAdmin()): SyncJobsRepository {
+  async function readJob(userId: string, type: SyncJobType, activeOnly: boolean) {
+    const read = () => {
+      let query = supabase.from("sync_jobs").select("*").eq("user_id", userId).eq("type", type);
+      if (activeOnly) query = query.in("status", ["queued", "running"]);
+      return query.order("created_at", { ascending: false }).limit(1).maybeSingle();
+    };
+    let { data, error } = await read();
+    if (error) throw new Error(`Failed to read job: ${error.message}`);
+
+    if (type === "etsy_sync" && data?.status === "running" &&
+        Date.parse(data.updated_at) < Date.now() - ETSY_SYNC_STALE_MS) {
+      const { error: recoveryError } = await supabase.from("sync_jobs").update({
+        status: "failed",
+        message: "Etsy sync interrupted. Start Sync Etsy again to retry.",
+        error: "No progress for 10 minutes. The previous worker may have stopped or timed out.",
+        completed_at: new Date().toISOString()
+      }).eq("id", data.id).eq("user_id", userId).eq("type", "etsy_sync")
+        .eq("status", "running").eq("updated_at", data.updated_at);
+      if (recoveryError) throw new Error(`Failed to recover interrupted Etsy sync: ${recoveryError.message}`);
+      // Read again: a worker may have advanced between the read and conditional update.
+      ({ data, error } = await read());
+      if (error) throw new Error(`Failed to read recovered job: ${error.message}`);
+    }
+    return data;
+  }
 
   return {
     async create({ userId, type, message = "Queued", syncLimit = null }) {
@@ -37,38 +64,11 @@ export function createSyncJobsRepository(): SyncJobsRepository {
     },
 
     async getLatestForUser(userId, type) {
-      const { data, error } = await supabase
-        .from("sync_jobs")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("type", type)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        throw new Error(`Failed to read latest job: ${error.message}`);
-      }
-
-      return data;
+      return readJob(userId, type, false);
     },
 
     async getActiveForUser(userId, type) {
-      const { data, error } = await supabase
-        .from("sync_jobs")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("type", type)
-        .in("status", ["queued", "running"])
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        throw new Error(`Failed to read active job: ${error.message}`);
-      }
-
-      return data;
+      return readJob(userId, type, true);
     },
 
     async claimQueued(id) {
@@ -118,26 +118,28 @@ export function createSyncJobsRepository(): SyncJobsRepository {
           progress_total: Math.max(progress.total ?? 100, 1),
           message: progress.message
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "running");
 
       if (error) {
         throw new Error(`Failed to update job progress: ${error.message}`);
       }
     },
 
-    async complete(id, result, message) {
+    async complete(id, result, message, errorMessage) {
       const { error } = await supabase
         .from("sync_jobs")
         .update({
-          status: "succeeded",
+          status: errorMessage ? "failed" : "succeeded",
           progress_current: 100,
           progress_total: 100,
           message,
           result,
-          error: null,
+          error: errorMessage ?? null,
           completed_at: new Date().toISOString()
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "running");
 
       if (error) {
         throw new Error(`Failed to complete job: ${error.message}`);
@@ -153,7 +155,8 @@ export function createSyncJobsRepository(): SyncJobsRepository {
           error: errorMessage,
           completed_at: new Date().toISOString()
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("status", "running");
 
       if (error) {
         throw new Error(`Failed to fail job: ${error.message}`);

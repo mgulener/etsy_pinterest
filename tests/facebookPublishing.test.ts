@@ -160,6 +160,26 @@ test("Facebook content validation preserves complete short text and rejects unsa
   assert.equal(facebookPermalink("https://attacker.test"), null);
 });
 
+test("Facebook verification retries transport failure once without treating it as an expired token", async () => {
+  let calls = 0;
+  const page = await verifyFacebookPage(settings, async () => {
+    if (++calls === 1) throw new TypeError("Network failure containing secret-token");
+    return Response.json({ id: settings.page_id, name: "Test Page" });
+  });
+  assert.equal(calls, 2);
+  assert.equal(page.id, settings.page_id);
+  calls = 0;
+  await assert.rejects(verifyFacebookPage(settings, async () => {
+    calls++; throw new DOMException("secret-token", "TimeoutError");
+  }), error => error instanceof FacebookError && /timeout/.test(error.message) && !/secret-token/.test(error.message));
+  assert.equal(calls, 2);
+  calls = 0;
+  await assert.rejects(verifyFacebookPage(settings, async () => {
+    calls++; return Response.json({ error: { code: 190, error_subcode: 463 } }, { status: 400 });
+  }));
+  assert.equal(calls, 1);
+});
+
 test("Etsy sync queues Facebook once, schedules it and leaves failed inserts rediscoverable", async () => {
   for (const fail of [false, true]) {
     const saved: number[] = [];
@@ -168,6 +188,7 @@ test("Etsy sync queues Facebook once, schedules it and leaves failed inserts red
       etsy: { async getAllActiveListings() { return [{ listing_id: 456, title: "Halloween Shirt", state: "active" }]; } },
       listingsRepository: {
         async getExistingEtsyListingIds() { return new Set(); },
+        async savePendingListing() {},
         async upsertKnownListing(listing) { saved.push(listing.etsyListingId); },
         async upsertKnownListings() {}, async updateLastSeen() {}
       },

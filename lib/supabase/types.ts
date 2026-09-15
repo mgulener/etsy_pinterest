@@ -98,6 +98,7 @@ export type EtsyListingRow = {
   description: string | null;
   url: string | null;
   state: string;
+  social_sync_pending: boolean;
   original_creation_timestamp: number | null;
   first_seen_at: string;
   last_seen_at: string;
@@ -272,7 +273,8 @@ export type Database = {
       };
       etsy_listings: {
         Row: EtsyListingRow;
-        Insert: Omit<EtsyListingRow, "id" | "first_seen_at" | "last_seen_at" | "created_at" | "updated_at"> & {
+        Insert: Omit<EtsyListingRow, "id" | "first_seen_at" | "last_seen_at" | "created_at" | "updated_at" | "social_sync_pending"> & {
+          social_sync_pending?: boolean;
           first_seen_at?: string;
           last_seen_at?: string;
           created_at?: string;

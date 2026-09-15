@@ -123,6 +123,24 @@ export async function syncEtsyListingsWithDependencies(input: {
     });
     const errorCountBeforeQueueing = errors.length;
 
+    let caption: string | undefined;
+    let captionSource: "rule" | "ai" | undefined;
+    try {
+      if (input.instagramQueueRepository && input.instagramCaptionGenerator) {
+        await reportProgress({
+          current: queueProgress,
+          message: `Generating AI caption for new listing ${index + 1} of ${newListings.length}`
+        });
+        caption = await input.instagramCaptionGenerator(listing);
+        captionSource = "ai";
+      }
+      // Parent row must exist before queue inserts. It remains retryable until all succeed.
+      await input.listingsRepository.savePendingListing(listing);
+    } catch (error) {
+      errors.push({ etsyListingId: listing.etsyListingId, message: error instanceof Error ? error.message : "Could not prepare listing" });
+      continue;
+    }
+
     const resolvedBoardId = await input.resolveBoardId?.(listing);
     const boardId = resolvedBoardId ?? input.boardId;
 
@@ -154,18 +172,6 @@ export async function syncEtsyListingsWithDependencies(input: {
 
     if (input.instagramQueueRepository) {
       try {
-        let caption: string | undefined;
-        let captionSource: "rule" | "ai" | undefined;
-
-        if (input.instagramCaptionGenerator) {
-          await reportProgress({
-            current: queueProgress,
-            message: `Generating AI caption for new listing ${index + 1} of ${newListings.length}`
-          });
-          caption = await input.instagramCaptionGenerator(listing);
-          captionSource = "ai";
-        }
-
         const instagramQueueResult =
           await input.instagramQueueRepository.enqueueListing(listing, {
             caption,

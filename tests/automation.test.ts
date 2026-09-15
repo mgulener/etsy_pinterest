@@ -105,6 +105,8 @@ class MemoryListingsRepository implements SyncListingsRepository {
     return new Set(ids.filter((id) => this.listings.has(id)));
   }
 
+  async savePendingListing() {}
+
   async upsertKnownListing(listing: NormalizedEtsyListing) {
     this.listings.set(listing.etsyListingId, listing);
   }
