@@ -24,7 +24,7 @@ export default function PrivacyPage() {
           <p>
             TheCozyCedar Social Automation is a private publishing tool operated
             for TheCozyCedar. It connects the shop owner&apos;s Etsy catalog with
-            authorized Pinterest and Instagram accounts to prepare, review,
+            authorized Pinterest, Instagram, and Facebook Page accounts to prepare, review,
             schedule, and publish product content.
           </p>
         </LegalSection>
@@ -60,10 +60,10 @@ export default function PrivacyPage() {
 
         <LegalSection title="Service providers and sharing">
           <p>
-            We use Etsy, Pinterest, Meta/Instagram, OpenAI, Supabase, and Vercel
+            We use Etsy, Pinterest, Meta (Instagram and Facebook Pages), OpenAI, Supabase, and Vercel
             only as needed to operate the workflow. We do not sell personal data
             or use platform data for advertising profiles. Content is shared with
-            Pinterest or Instagram only for the connected account&apos;s requested
+            Pinterest, Instagram, or Facebook only for the connected account&apos;s requested
             publishing activity.
           </p>
         </LegalSection>

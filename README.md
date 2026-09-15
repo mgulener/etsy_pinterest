@@ -419,6 +419,14 @@ x-cron-secret: <CRON_SECRET>
 7. Confirm logs show `[DRY RUN] Would publish...` and no Pinterest Pin is created.
 8. Set `DRY_RUN=false` only after the queue behavior looks correct.
 
+## Facebook Pages
+
+Facebook has separate per-user Page credentials, a queue, editable messages,
+Istanbul-time scheduling, and a publication history. It defaults to disabled.
+Apply migration `0023_facebook_channel.sql`, connect a Facebook Page in Settings,
+then test one product before enabling scheduled publishing. No Facebook scheduler
+is created automatically. See [Facebook setup and safety](docs/facebook-setup.md).
+
 ## Future extensions
 
 The database currently uses one automatic Pin per Etsy listing. The schema already stores `etsy_image_id`, so it can be migrated later from:

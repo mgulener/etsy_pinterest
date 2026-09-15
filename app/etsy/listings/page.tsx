@@ -8,6 +8,9 @@ import { requireAdminSession } from "@/lib/auth/session";
 import { createAppSettingsRepository } from "@/lib/repositories/appSettingsRepository";
 import { getCurrentUserSettings } from "@/lib/repositories/userSettingsRepository";
 import { createListingsRepository } from "@/lib/repositories/listingsRepository";
+import { getFacebookSettings } from "@/lib/repositories/facebookRepository";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { FacebookActionButton } from "@/app/facebook/QueueControls";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +24,8 @@ function getParam(params: Record<string, string | string[] | undefined>, key: st
 }
 
 export default async function ListingsPage({ searchParams }: PageProps) {
-  await requireAdminSession();
+  const session = await requireAdminSession();
+  const facebook = await getFacebookSettings(session.userId);
   const params = (await searchParams) ?? {};
   const search = getParam(params, "search") ?? "";
   const page = Math.max(Number(getParam(params, "page") ?? "1"), 1);
@@ -35,7 +39,15 @@ export default async function ListingsPage({ searchParams }: PageProps) {
     getCurrentUserSettings()
   ]);
   const initialSyncCompleted = await createAppSettingsRepository().isInitialSyncCompleted();
-  const hasPublishActions = settings.pinterestEnabled || settings.instagramEnabled;
+  const hasPublishActions = settings.pinterestEnabled || settings.instagramEnabled || facebook.settings?.enabled;
+  const facebookStatuses = new Map<number, string>();
+  let facebookStatusesAvailable = true;
+  if (facebook.settings && result.rows.length) {
+    const { data, error } = await getSupabaseAdmin().from("facebook_queue").select("etsy_listing_id,status")
+      .eq("user_id", session.userId).eq("page_id", facebook.settings.page_id).in("etsy_listing_id", result.rows.map(row => row.etsy_listing_id));
+    facebookStatusesAvailable = !error;
+    if (!error) for (const item of data ?? []) facebookStatuses.set(item.etsy_listing_id, item.status);
+  }
   const totalPages = Math.max(Math.ceil(result.total / pageSize), 1);
 
   return (
@@ -51,6 +63,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
         <form>
           <input name="search" placeholder="Search title or listing ID" defaultValue={search} />
           <button type="submit">Search</button>
+          {search ? <a className="btn btn-outline-secondary" href="/etsy/listings">Clear</a> : null}
         </form>
       </div>
 
@@ -62,6 +75,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
               <th>State</th>
               <th>Pinterest</th>
               <th>Instagram</th>
+              {facebook.settings ? <th>Facebook</th> : null}
               {hasPublishActions ? <th className="actions-column">Publish</th> : null}
             </tr>
           </thead>
@@ -97,6 +111,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
                     {listing.instagram_status}
                   </span>
                 </td>
+                {facebook.settings ? <td><span className="badge text-bg-secondary">{facebookStatusesAvailable ? facebookStatuses.get(listing.etsy_listing_id) ?? "none" : "Unavailable"}</span></td> : null}
                 {hasPublishActions ? (
                   <td>
                     <div className="platform-actions" aria-label={`Publish actions for ${listing.title}`}>
@@ -126,6 +141,7 @@ export default async function ListingsPage({ searchParams }: PageProps) {
                           </SubmitButton>
                         </form>
                       ) : null}
+                      {facebook.settings?.enabled ? <FacebookActionButton command="add" listingId={listing.etsy_listing_id} disabled={!initialSyncCompleted || listing.state !== "active"} /> : null}
                     </div>
                   </td>
                 ) : null}

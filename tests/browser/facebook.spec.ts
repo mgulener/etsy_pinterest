@@ -1,0 +1,88 @@
+import { createHmac } from "node:crypto";
+import { test, expect } from "@playwright/test";
+
+test("Facebook settings, draft approval, search, confirmation and responsive layout", async ({ page, context }, testInfo) => {
+  const payload = Buffer.from(JSON.stringify({ userId: "browser-test-owner", email: "owner@test.invalid", expiresAt: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+  const signature = createHmac("sha256", "pinterest-description-browser-test-only").update(payload).digest("base64url");
+  await context.addCookies([{ name: "etsy_pinterest_admin", value: `${payload}.${signature}`, url: "http://127.0.0.1:3107" }]);
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/facebook/queue");
+  await expect(page.getByRole("heading", { name: "Facebook Queue" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish Next Post" })).toBeDisabled();
+  await page.getByRole("button", { name: "Edit Facebook post", exact: true }).click();
+  let dialog = page.getByRole("dialog");
+  await expect(dialog.getByLabel("Message", { exact: true })).toHaveValue("A spooky design for book lovers.");
+  await expect(dialog.getByLabel("Scheduled at (UTC+3 / Istanbul)")).toHaveValue("2026-10-01T15:00");
+  await dialog.getByLabel("Message", { exact: true }).fill("Unsaved draft");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".caption-snippet")).toHaveText("A spooky design for book lovers.");
+  await page.getByRole("button", { name: "Edit Facebook post", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Message", { exact: true }).fill("My approved Facebook message.");
+  await expect.poll(() => dialog.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+  await page.screenshot({ path: testInfo.outputPath("facebook-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const bounds = await dialog.locator(".modal-content").boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath("facebook-mobile.png") });
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator(".caption-snippet")).toHaveText("My approved Facebook message.");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByLabel("Search listing title", { exact: true }).fill("No matching listing");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByText("No queue items found.")).toBeVisible();
+  await page.getByRole("link", { name: "Clear", exact: true }).click();
+  await expect(page.locator(".caption-snippet")).toHaveText("My approved Facebook message.");
+  await page.getByRole("button", { name: "Remove from Facebook queue", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".caption-snippet")).toBeVisible();
+
+  await page.goto("/settings#facebook");
+  const section = page.locator("#facebook");
+  await expect(section.getByLabel("Page access token", { exact: true })).toHaveValue("");
+  expect(await page.content()).not.toContain("test-facebook-token");
+  await section.getByLabel("Enable Facebook", { exact: true }).check();
+  const interval = section.getByLabel("Publication interval (minutes)");
+  await expect(interval).toHaveAttribute("min", "5");
+  await interval.fill("4");
+  expect(await interval.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(false);
+  await interval.fill("5");
+  await section.getByRole("button", { name: "Save Facebook Settings" }).click();
+  await expect(section.getByRole("status")).toContainText("Saved: TheCozyCedar Test");
+  await page.reload();
+  await expect(section.getByLabel("Publication interval (minutes)")).toHaveValue("5");
+  await page.goto("/facebook/queue");
+  await page.getByRole("button", { name: "Publish Next Post" }).click();
+  await expect(page.getByRole("status")).toContainText("Dry run finished");
+  await page.goto("/etsy/listings");
+  await expect(page.getByRole("columnheader", { name: "Facebook", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add to Facebook queue", exact: true })).toBeVisible();
+  await page.goto("/dashboard");
+  const summary = page.getByRole("region", { name: "Automation summary" });
+  await expect(summary.locator("article")).toHaveCount(4);
+  await expect(page.getByText("Some dashboard information is temporarily unavailable.", { exact: false })).toHaveCount(0);
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    for (const card of await summary.locator("article").all()) {
+      const cardBounds = await card.boundingBox();
+      expect(cardBounds!.x).toBeGreaterThanOrEqual(0);
+      expect(cardBounds!.x + cardBounds!.width).toBeLessThanOrEqual(viewport.width);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`dashboard-${viewport.width}.png`), fullPage: true });
+  }
+  await page.goto("/facebook/queue");
+  await page.getByRole("button", { name: "Remove from Facebook queue", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByText("cancelled", { exact: true }).last()).toBeVisible();
+  await page.goto("/facebook/posts");
+  await expect(page.getByText("No published posts found.")).toBeVisible();
+  expect(errors).toEqual([]);
+});

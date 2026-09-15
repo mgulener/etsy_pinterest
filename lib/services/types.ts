@@ -31,6 +31,11 @@ export type InstagramSyncQueueRepository = {
   rebuildPendingSchedule?(): Promise<number>;
 };
 
+export type FacebookSyncQueueRepository = {
+  enqueueListing(listing: NormalizedEtsyListing, options?: { scheduledAt?: string }): Promise<"created" | "duplicate">;
+  rebuildPendingSchedule?(): Promise<number>;
+};
+
 export type BootstrapSettingsRepository = {
   isInitialSyncCompleted(): Promise<boolean>;
   setInitialSyncCompleted(value: boolean): Promise<void>;

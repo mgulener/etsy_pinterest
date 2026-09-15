@@ -7,6 +7,8 @@ import {
 } from "./actions";
 import { SubmitButton } from "@/app/components/SubmitButton";
 import { EtsyPermissions } from "./EtsyPermissions";
+import { FacebookSettings } from "./FacebookSettings";
+import { getFacebookSettings } from "@/lib/repositories/facebookRepository";
 import { hasEtsyListingWriteAccess } from "@/lib/etsy/oauth";
 import { requireAdminSession } from "@/lib/auth/session";
 import { listPinterestBoards, type PinterestBoard } from "@/lib/pinterest/client";
@@ -32,6 +34,13 @@ function getParam(params: Record<string, string | string[] | undefined>, key: st
 export default async function SettingsPage({ searchParams }: PageProps) {
   const session = await requireAdminSession();
   const settings = await getSettingsForUser(session.userId);
+  const facebook = await getFacebookSettings(session.userId);
+  const publicFacebookSettings = facebook.settings ? {
+    user_id: facebook.settings.user_id, page_id: facebook.settings.page_id, page_name: facebook.settings.page_name,
+    api_version: facebook.settings.api_version, enabled: facebook.settings.enabled,
+    automatic_enabled: facebook.settings.automatic_enabled, interval_minutes: facebook.settings.interval_minutes,
+    verified_at: facebook.settings.verified_at, updated_at: facebook.settings.updated_at
+  } : null;
   const params = (await searchParams) ?? {};
   const saved = getParam(params, "saved") === "1";
   const etsyStatus = getParam(params, "etsy");
@@ -380,6 +389,8 @@ export default async function SettingsPage({ searchParams }: PageProps) {
           <SubmitButton pendingText="Saving settings...">Save Settings</SubmitButton>
         </div>
       </form>
+
+      <FacebookSettings available={facebook.available} settings={publicFacebookSettings} apiVersion={settings.metaApiVersion ?? ""} />
 
       {settings.pinterestEnvironment === "sandbox" && settings.pinterestSandboxAccessToken ? (
         <section className="settings-section mt-3">

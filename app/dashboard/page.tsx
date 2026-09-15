@@ -13,6 +13,7 @@ import { createPinQueueRepository } from "@/lib/repositories/pinQueueRepository"
 import { createPinterestPostsRepository } from "@/lib/repositories/pinterestPostsRepository";
 import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository";
 import { createOptionalReader } from "@/lib/utils/optionalRead";
+import { FacebookSummary } from "@/app/facebook/FacebookSummary";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -100,8 +101,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       <div className="page-heading dashboard-hero">
         <div>
           <p className="eyebrow">Automation Control</p>
-          <h1>Pinterest Automation</h1>
-          <p>Etsy catalog sync, Pinterest queue, and Instagram publishing in one place.</p>
+          <h1>Social Automation</h1>
+          <p>Etsy, Pinterest, Instagram, and Facebook.</p>
         </div>
         <div className="actions">
           <a className="button ghost-button" href="/settings">
@@ -145,8 +146,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </section>
       ) : null}
 
-      <section className="dashboard-channel-grid" aria-label="Automation summary">
-        <article className="channel-card listings-card">
+      <section className="row row-cols-1 row-cols-lg-2 row-cols-xxl-4 g-3 mb-4" aria-label="Automation summary">
+        <div className="col"><article className="channel-card listings-card h-100">
           <div className="channel-card-header">
             <span className="channel-logo etsy-logo" aria-hidden="true">E</span>
             <div>
@@ -159,9 +160,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <span>Total listings</span>
           </div>
           <a className="channel-link" href="/etsy/listings">View listings</a>
-        </article>
+        </article></div>
 
-        <article className="channel-card pinterest-card">
+        <div className="col"><article className="channel-card pinterest-card h-100">
           <div className="channel-card-header">
             <span className="channel-logo pinterest-logo" aria-hidden="true">P</span>
             <div>
@@ -175,9 +176,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <MetricRow label="Failed" value={failedCount} tone="danger" />
           </div>
           <a className="channel-link" href="/pinterest/queue">Open queue</a>
-        </article>
+        </article></div>
 
-        <article className="channel-card instagram-card">
+        <div className="col"><article className="channel-card instagram-card h-100">
           <div className="channel-card-header">
             <span className="channel-logo instagram-logo" aria-hidden="true">IG</span>
             <div>
@@ -191,7 +192,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <MetricRow label="Failed" value={instagramFailedCount} tone="danger" />
           </div>
           <a className="channel-link" href="/instagram/queue">Open queue</a>
-        </article>
+        </article></div>
+        <div className="col"><FacebookSummary userId={session.userId} /></div>
       </section>
     </main>
   );

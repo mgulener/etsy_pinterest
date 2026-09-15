@@ -7,7 +7,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "TheCozyCedar Social Automation",
-  description: "Private Etsy, Pinterest, and Instagram publishing workspace"
+  description: "Private Etsy, Pinterest, Instagram, and Facebook publishing workspace"
 };
 
 export default async function RootLayout({
@@ -40,6 +40,9 @@ export default async function RootLayout({
                 <span className="nav-section">Instagram</span>
                 <Link href="/instagram/queue">Queue</Link>
                 <Link href="/instagram/posts">Published Posts</Link>
+                <span className="nav-section">Facebook</span>
+                <Link href="/facebook/queue">Queue</Link>
+                <Link href="/facebook/posts">Published Posts</Link>
                 <span className="nav-section">System</span>
                 <Link href="/settings">Settings</Link>
                 <Link href="/privacy">Privacy</Link>

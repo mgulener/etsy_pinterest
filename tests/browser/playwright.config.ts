@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "pinterestDescription.spec.ts",
+  testMatch: ["pinterestDescription.spec.ts", "facebook.spec.ts"],
   workers: 1,
   retries: 0,
   timeout: 60_000,

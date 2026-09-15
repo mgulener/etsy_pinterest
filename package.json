@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "test:e2e:pinterest": "playwright test --config tests/browser/playwright.config.ts"
+    "test:e2e:pinterest": "playwright test --config tests/browser/playwright.config.ts pinterestDescription.spec.ts",
+    "test:e2e:facebook": "playwright test --config tests/browser/playwright.config.ts facebook.spec.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.55.0",

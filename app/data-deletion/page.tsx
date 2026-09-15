@@ -21,7 +21,7 @@ export default function DataDeletionPage() {
           <h2>Disconnect platform access</h2>
           <p>
             First revoke TheCozyCedar Social Automation from the connected Etsy,
-            Pinterest, or Instagram/Meta account settings. Revocation prevents the
+            Pinterest, Instagram, or Facebook/Meta account settings. Revocation prevents the
             application from making new authorized requests but does not by itself
             remove existing operational records.
           </p>

@@ -1,4 +1,5 @@
 import type { PublishAttempt } from "@/lib/instagram/durablePublishing";
+import type { FacebookQueueRow, FacebookSettings } from "@/lib/facebook/types";
 export type Json =
   | string
   | number
@@ -188,6 +189,18 @@ export type InstagramPostRow = {
 export type Database = {
   public: {
     Tables: {
+      facebook_settings: {
+        Row: FacebookSettings;
+        Insert: Omit<FacebookSettings, "updated_at"> & { updated_at?: string };
+        Update: Partial<Omit<FacebookSettings, "user_id">>;
+        Relationships: [];
+      };
+      facebook_queue: {
+        Row: FacebookQueueRow;
+        Insert: Pick<FacebookQueueRow, "user_id" | "page_id" | "etsy_listing_id" | "title" | "image_url" | "destination_url" | "message" | "scheduled_at"> & Partial<FacebookQueueRow>;
+        Update: Partial<Omit<FacebookQueueRow, "id" | "user_id" | "page_id" | "etsy_listing_id" | "created_at">>;
+        Relationships: [];
+      };
       sync_jobs: {
         Row: SyncJobRow;
         Insert: Omit<SyncJobRow, "id" | "status" | "progress_current" | "progress_total" | "sync_limit" | "message" | "result" | "error" | "started_at" | "completed_at" | "created_at" | "updated_at"> & {
@@ -379,7 +392,16 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      claim_facebook_post: {
+        Args: { p_user_id: string; p_page_id: string; p_automatic?: boolean };
+        Returns: FacebookQueueRow[];
+      };
+      schedule_facebook_posts: {
+        Args: { p_user_id: string; p_page_id: string; p_updates: Json };
+        Returns: number;
+      };
+    };
     Enums: {
       pin_queue_status: PinQueueStatus;
     };

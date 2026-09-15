@@ -15,10 +15,12 @@ import type {
   BootstrapSettingsRepository,
   EtsyListingsSource,
   InstagramSyncQueueRepository,
+  FacebookSyncQueueRepository,
   SyncListingsRepository,
   SyncQueueRepository
 } from "./types";
 import { createPinterestBoardResolver } from "./syncPinterestBoards";
+import { getFacebookSyncQueue } from "./queueFacebookListings";
 
 export type SyncProgress = {
   current: number;
@@ -33,6 +35,7 @@ export type SyncEtsyListingsResult = {
   created: number;
   queued: number;
   instagramQueued: number;
+  facebookQueued: number;
   skippedBecauseBootstrapRequired: boolean;
   errors: Array<{ etsyListingId: number; message: string }>;
 };
@@ -42,6 +45,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   listingsRepository: SyncListingsRepository;
   queueRepository?: SyncQueueRepository;
   instagramQueueRepository?: InstagramSyncQueueRepository;
+  facebookQueueRepository?: FacebookSyncQueueRepository;
   settingsRepository: BootstrapSettingsRepository;
   boardId?: string;
   resolveBoardId?: (
@@ -72,6 +76,7 @@ export async function syncEtsyListingsWithDependencies(input: {
       created: 0,
       queued: 0,
       instagramQueued: 0,
+      facebookQueued: 0,
       skippedBecauseBootstrapRequired: true,
       errors: []
     };
@@ -96,6 +101,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   let created = 0;
   let queued = 0;
   let instagramQueued = 0;
+  let facebookQueued = 0;
   const errors: SyncEtsyListingsResult["errors"] = [];
 
   logger.info("SYNC", "Listings compared with database", {
@@ -186,6 +192,15 @@ export async function syncEtsyListingsWithDependencies(input: {
       }
     }
 
+    if (input.facebookQueueRepository) {
+      try {
+        const result = await input.facebookQueueRepository.enqueueListing(listing, { scheduledAt });
+        if (result === "created") facebookQueued++;
+      } catch {
+        errors.push({ etsyListingId: listing.etsyListingId, message: "Could not add the new listing to the Facebook queue." });
+      }
+    }
+
     if (errors.length === errorCountBeforeQueueing) {
       try {
         await input.listingsRepository.upsertKnownListing(listing);
@@ -211,7 +226,12 @@ export async function syncEtsyListingsWithDependencies(input: {
     await input.instagramQueueRepository.rebuildPendingSchedule();
   }
 
-  await reportProgress({ current: 98, message: "Finalizing Etsy sync" });
+  if (facebookQueued > 0 && input.facebookQueueRepository?.rebuildPendingSchedule) {
+    await reportProgress({ current: 98, message: "Prioritizing the Facebook queue" });
+    await input.facebookQueueRepository.rebuildPendingSchedule();
+  }
+
+  await reportProgress({ current: 99, message: "Finalizing Etsy sync" });
 
   return {
     mode: "sync",
@@ -220,6 +240,7 @@ export async function syncEtsyListingsWithDependencies(input: {
     created,
     queued,
     instagramQueued,
+    facebookQueued,
     skippedBecauseBootstrapRequired: false,
     errors
   };
@@ -245,6 +266,7 @@ export async function syncEtsyListingsForUser(
 
   return syncEtsyListingsWithDependencies({
     etsy: { getAllActiveListings: () => getAllActiveListings(userId, maxListings) },
+    facebookQueueRepository: await getFacebookSyncQueue(userId),
     listingsRepository: createListingsRepository(),
     queueRepository: pinterestEnabled ? createPinQueueRepository({ generateDescriptions: createAutomaticPinterestDescriptionGenerator(settings) }) : undefined,
     instagramQueueRepository: instagramEnabled
@@ -290,6 +312,7 @@ export async function syncEtsyListings(
 
   return syncEtsyListingsWithDependencies({
     etsy: { getAllActiveListings: () => getAllActiveListings(undefined, maxListings) },
+    facebookQueueRepository: settings.userId ? await getFacebookSyncQueue(settings.userId) : undefined,
     listingsRepository: createListingsRepository(),
     queueRepository: pinterestEnabled ? createPinQueueRepository({ generateDescriptions: createAutomaticPinterestDescriptionGenerator(settings) }) : undefined,
     instagramQueueRepository: instagramEnabled
