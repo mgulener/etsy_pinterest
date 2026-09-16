@@ -12,6 +12,7 @@ export type EtsyListing = {
   shop_section_id?: number | null;
   title: string;
   description?: string;
+  tags?: string[];
   url?: string;
   state: string;
   original_creation_timestamp?: number;
@@ -39,6 +40,7 @@ export type EtsyListingsResponse = {
 };
 
 export type NormalizedEtsyListing = {
+  tags?: string[];
   etsyListingId: number;
   etsyShopSectionId: number | null;
   etsyImageId: number | null;

@@ -21,6 +21,7 @@ import type {
 } from "./types";
 import { createPinterestBoardResolver } from "./syncPinterestBoards";
 import { getFacebookSyncQueue } from "./queueFacebookListings";
+import { createSeasonalPlanningRepository, refreshSeasonalClassifications } from "@/lib/repositories/seasonalPlanningRepository";
 
 export type SyncProgress = {
   current: number;
@@ -53,6 +54,7 @@ export async function syncEtsyListingsWithDependencies(input: {
   ) => string | undefined | Promise<string | undefined>;
   onProgress?: (progress: SyncProgress) => Promise<void> | void;
   instagramCaptionGenerator?: (listing: NormalizedEtsyListing) => Promise<string>;
+  refreshSeasonalPriority?: (listings: NormalizedEtsyListing[], progress: (progress: SyncProgress) => Promise<void>) => Promise<boolean>;
 }): Promise<SyncEtsyListingsResult> {
   const reportProgress = async (progress: SyncProgress) => {
     try {
@@ -222,17 +224,20 @@ export async function syncEtsyListingsWithDependencies(input: {
     }
   }
 
-  if (queued > 0 && input.queueRepository?.rebuildPendingSchedule) {
+  // New products first; missing/changed classifications are checkpointed and resumed daily.
+  const refreshDailySchedule = await input.refreshSeasonalPriority?.([...newListings, ...knownListings], reportProgress) ?? false;
+
+  if ((queued > 0 || refreshDailySchedule) && input.queueRepository?.rebuildPendingSchedule) {
     await reportProgress({ current: 96, message: "Prioritizing the Pinterest queue" });
     await input.queueRepository.rebuildPendingSchedule();
   }
 
-  if (instagramQueued > 0 && input.instagramQueueRepository?.rebuildPendingSchedule) {
+  if ((instagramQueued > 0 || refreshDailySchedule) && input.instagramQueueRepository?.rebuildPendingSchedule) {
     await reportProgress({ current: 97, message: "Prioritizing the Instagram queue" });
     await input.instagramQueueRepository.rebuildPendingSchedule();
   }
 
-  if (facebookQueued > 0 && input.facebookQueueRepository?.rebuildPendingSchedule) {
+  if ((facebookQueued > 0 || refreshDailySchedule) && input.facebookQueueRepository?.rebuildPendingSchedule) {
     await reportProgress({ current: 98, message: "Prioritizing the Facebook queue" });
     await input.facebookQueueRepository.rebuildPendingSchedule();
   }
@@ -271,6 +276,7 @@ export async function syncEtsyListingsForUser(
   );
 
   return syncEtsyListingsWithDependencies({
+    refreshSeasonalPriority: seasonalPriorityRefresher(userId),
     etsy: { getAllActiveListings: () => getAllActiveListings(userId, maxListings) },
     facebookQueueRepository: await getFacebookSyncQueue(userId),
     listingsRepository: createListingsRepository(),
@@ -317,6 +323,7 @@ export async function syncEtsyListings(
   );
 
   return syncEtsyListingsWithDependencies({
+    refreshSeasonalPriority: settings.userId ? seasonalPriorityRefresher(settings.userId) : undefined,
     etsy: { getAllActiveListings: () => getAllActiveListings(undefined, maxListings) },
     facebookQueueRepository: settings.userId ? await getFacebookSyncQueue(settings.userId) : undefined,
     listingsRepository: createListingsRepository(),
@@ -343,4 +350,16 @@ export async function syncEtsyListings(
         })
       : undefined
   });
+}
+
+function seasonalPriorityRefresher(userId: string) {
+  return async (listings: NormalizedEtsyListing[], progress: (progress: SyncProgress) => Promise<void>) => {
+    if (!(await createSeasonalPlanningRepository(userId).policy()).enabled) return false;
+    await progress({ current: 95, message: "Checking seasonal product classifications" });
+    const result = await refreshSeasonalClassifications(userId, listings, (generated, remaining) => progress({
+      current: 95, message: `Seasonal AI: ${generated} classified, ${remaining} remaining`
+    }));
+    logger.info("SYNC", "Seasonal classifications refreshed", result);
+    return true;
+  };
 }

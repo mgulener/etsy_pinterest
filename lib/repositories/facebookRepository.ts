@@ -4,6 +4,7 @@ import { buildScheduledAt, getNextScheduleStart, sortQueueRowsForPublishing } fr
 import { buildFacebookMessage, validateFacebookMedia, validateFacebookMessage } from "@/lib/facebook/content";
 import type { FacebookQueueRow, FacebookQueueStatus, FacebookSettings } from "@/lib/facebook/types";
 import type { NormalizedEtsyListing } from "@/lib/etsy/types";
+import { loadSeasonalPlan } from "./seasonalPlanningRepository";
 
 function check(error: { message: string } | null) {
   if (error) throw new Error("Facebook database operation failed. Check migration 0023 and database availability.");
@@ -74,19 +75,18 @@ export function createFacebookRepository(userId: string, pageId: string) {
     async rebuildPendingSchedule(intervalMinutes: number) {
       const rows: FacebookQueueRow[] = [];
       for (let from = 0; ; from += 500) {
-        const { data, error } = await scoped().eq("status", "pending").eq("schedule_locked", false).order("id").range(from, from + 499);
+        const { data, error } = await scoped().in("status", ["pending", "processing"]).order("id").range(from, from + 499);
         check(error); rows.push(...(data ?? []));
         if ((data?.length ?? 0) < 500) break;
       }
-      const { data: locked, error } = await scoped().eq("status", "pending").eq("schedule_locked", true);
-      check(error);
-      const occupied = new Set((locked ?? []).map(row => new Date(row.scheduled_at).getTime()));
+      const seasonalPlan = await loadSeasonalPlan(rows, intervalMinutes, userId);
+      const occupied = new Set(rows.filter(row => row.schedule_locked || row.status === "processing").map(row => new Date(row.scheduled_at).getTime()));
       const start = getNextScheduleStart(intervalMinutes);
       let slot = 0;
       const updates = [];
-      for (const row of sortQueueRowsForPublishing(rows.map(row => ({ ...row, description: row.message })))) {
-        let scheduledAt = buildScheduledAt(slot++, intervalMinutes, start);
-        while ([...occupied].some(time => Math.abs(time - Date.parse(scheduledAt)) < intervalMinutes * 60_000)) {
+      for (const row of seasonalPlan ?? sortQueueRowsForPublishing(rows.filter(row => row.status === "pending" && !row.schedule_locked).map(row => ({ ...row, description: row.message })))) {
+        let scheduledAt = seasonalPlan ? row.scheduled_at : buildScheduledAt(slot++, intervalMinutes, start);
+        while (!seasonalPlan && [...occupied].some(time => Math.abs(time - Date.parse(scheduledAt)) < intervalMinutes * 60_000)) {
           scheduledAt = buildScheduledAt(slot++, intervalMinutes, start);
         }
         updates.push({ id: row.id, scheduled_at: scheduledAt, updated_at: row.updated_at });

@@ -10,6 +10,8 @@ import {
 } from "@/lib/queue/scheduling";
 import type { PinQueueRow, PinQueueStatus } from "@/lib/supabase/types";
 import { PINTEREST_AI_BATCH_SIZE, type PinterestDescriptionProduct } from "@/lib/pinterest/aiDescription";
+import { loadSeasonalPlan } from "./seasonalPlanningRepository";
+import type { SeasonalQueueItem } from "@/lib/queue/seasonalPlanning";
 
 export type QueuePageResult = {
   rows: PinQueueRow[];
@@ -207,12 +209,9 @@ export function createPinQueueRepository(options: {
 
     async rebuildPendingSchedule(intervalMinutes = DEFAULT_QUEUE_INTERVAL_MINUTES) {
       const pageSize = 1000;
-      const data: Array<{
-        id: string;
+      const data: Array<SeasonalQueueItem & {
         title: string;
         description: string | null;
-        created_at?: string;
-        scheduled_at?: string;
       }> = [];
       let from = 0;
       let readMore = true;
@@ -220,9 +219,9 @@ export function createPinQueueRepository(options: {
       while (readMore) {
         const { data: page, error } = await supabase
           .from("pin_queue")
-          .select("id, title, description, created_at, scheduled_at")
-          .eq("status", "pending")
-          .eq("schedule_locked", false)
+          .select("id, etsy_listing_id, title, description, created_at, scheduled_at, updated_at, status, schedule_locked")
+          .in("status", ["pending", "processing"])
+          .order("id")
           .range(from, from + pageSize - 1);
 
         if (error) {
@@ -234,10 +233,12 @@ export function createPinQueueRepository(options: {
         from += pageSize;
       }
 
-      const rows = sortQueueRowsForPublishing(data);
+      const seasonalPlan = await loadSeasonalPlan(data, intervalMinutes);
+      const rows = seasonalPlan ?? sortQueueRowsForPublishing(data.filter(row => row.status === "pending" && !row.schedule_locked));
       const startDate = getNextScheduleStart(intervalMinutes);
 
       let updateError: { message: string } | null = null;
+      let updated = 0;
 
       for (let fromIndex = 0; fromIndex < rows.length; fromIndex += scheduleUpdateBatchSize) {
         const batch = rows.slice(fromIndex, fromIndex + scheduleUpdateBatchSize);
@@ -245,12 +246,17 @@ export function createPinQueueRepository(options: {
           supabase
             .from("pin_queue")
             .update({
-              scheduled_at: buildScheduledAt(fromIndex + offset, intervalMinutes, startDate),
+              scheduled_at: seasonalPlan ? item.scheduled_at : buildScheduledAt(fromIndex + offset, intervalMinutes, startDate),
               schedule_locked: false
             })
             .eq("id", item.id)
+            .eq("status", "pending")
+            .eq("schedule_locked", false)
+            .eq("updated_at", item.updated_at)
+            .select("id")
         ));
 
+        updated += results.reduce((count, result) => count + (result.data?.length ?? 0), 0);
         updateError = results.find((result) => result.error)?.error ?? null;
 
         if (updateError) {
@@ -262,7 +268,7 @@ export function createPinQueueRepository(options: {
         throw new Error("Failed to rebuild pin queue schedule: " + updateError.message);
       }
 
-      return rows.length;
+      return updated;
     },
 
     async listPending(limit) {

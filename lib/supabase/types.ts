@@ -99,6 +99,7 @@ export type EtsyListingRow = {
   url: string | null;
   state: string;
   social_sync_pending: boolean;
+  tags?: string[];
   original_creation_timestamp: number | null;
   first_seen_at: string;
   last_seen_at: string;
@@ -190,6 +191,18 @@ export type InstagramPostRow = {
 export type Database = {
   public: {
     Tables: {
+      seasonal_planning_settings: {
+        Row: { user_id: string; enabled: boolean; lead_time_days: number; lookahead_days: number };
+        Insert: { user_id: string; enabled?: boolean; lead_time_days?: number; lookahead_days?: number };
+        Update: { enabled?: boolean; lead_time_days?: number; lookahead_days?: number };
+        Relationships: [];
+      };
+      listing_event_classifications: {
+        Row: { user_id: string; etsy_listing_id: number; input_hash: string; classifier_version: string; model: string; classification: Json; classified_at: string };
+        Insert: { user_id: string; etsy_listing_id: number; input_hash: string; classifier_version: string; model: string; classification: Json; classified_at?: string };
+        Update: { input_hash?: string; classifier_version?: string; model?: string; classification?: Json; classified_at?: string };
+        Relationships: [];
+      };
       facebook_settings: {
         Row: FacebookSettings;
         Insert: Omit<FacebookSettings, "updated_at"> & { updated_at?: string };

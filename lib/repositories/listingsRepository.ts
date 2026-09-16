@@ -29,6 +29,7 @@ export type ListingsRepository = {
 function toListingRow(listing: NormalizedEtsyListing) {
   return {
     etsy_listing_id: listing.etsyListingId,
+    ...(listing.tags ? { tags: listing.tags } : {}),
     etsy_shop_section_id: listing.etsyShopSectionId,
     etsy_image_id: listing.etsyImageId,
     image_url: listing.imageUrl,

@@ -11,11 +11,12 @@ import {
   buildScheduledAt,
   DEFAULT_QUEUE_INTERVAL_MINUTES,
   getNextScheduleStart,
-  sortQueueRowsForPublishing,
-  type QueueSortableItem
+  sortQueueRowsForPublishing
 } from "@/lib/queue/scheduling";
 import type { InstagramPostMode } from "@/lib/instagram/types";
 import type { InstagramQueueRow, PinQueueStatus } from "@/lib/supabase/types";
+import { loadSeasonalPlan } from "./seasonalPlanningRepository";
+import type { SeasonalQueueItem } from "@/lib/queue/seasonalPlanning";
 
 export type InstagramQueuePageResult = {
   rows: InstagramQueueRow[];
@@ -165,16 +166,16 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
 
     async rebuildPendingSchedule(intervalMinutes = DEFAULT_QUEUE_INTERVAL_MINUTES) {
       const pageSize = 1000;
-      const data: Array<QueueSortableItem & { id: string }> = [];
+      const data: Array<SeasonalQueueItem & { title: string; description: string | null }> = [];
       let from = 0;
       let readMore = true;
 
       while (readMore) {
         const { data: page, error } = await supabase
           .from("instagram_queue")
-          .select("id, title, description, created_at, scheduled_at")
-          .eq("status", "pending")
-          .eq("schedule_locked", false)
+          .select("id, etsy_listing_id, title, description, created_at, scheduled_at, updated_at, status, schedule_locked")
+          .in("status", ["pending", "processing"])
+          .order("id")
           .range(from, from + pageSize - 1);
 
         if (error) {
@@ -186,10 +187,12 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         from += pageSize;
       }
 
-      const rows = sortQueueRowsForPublishing(data);
+      const seasonalPlan = await loadSeasonalPlan(data, intervalMinutes);
+      const rows = seasonalPlan ?? sortQueueRowsForPublishing(data.filter(row => row.status === "pending" && !row.schedule_locked));
       const startDate = getNextScheduleStart(intervalMinutes);
 
       let updateError: { message: string } | null = null;
+      let updated = 0;
 
       for (let fromIndex = 0; fromIndex < rows.length; fromIndex += scheduleUpdateBatchSize) {
         const batch = rows.slice(fromIndex, fromIndex + scheduleUpdateBatchSize);
@@ -197,12 +200,17 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
           supabase
             .from("instagram_queue")
             .update({
-              scheduled_at: buildScheduledAt(fromIndex + offset, intervalMinutes, startDate),
+              scheduled_at: seasonalPlan ? item.scheduled_at : buildScheduledAt(fromIndex + offset, intervalMinutes, startDate),
               schedule_locked: false
             })
             .eq("id", item.id)
+            .eq("status", "pending")
+            .eq("schedule_locked", false)
+            .eq("updated_at", item.updated_at)
+            .select("id")
         ));
 
+        updated += results.reduce((count, result) => count + (result.data?.length ?? 0), 0);
         updateError = results.find((result) => result.error)?.error ?? null;
 
         if (updateError) {
@@ -214,7 +222,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
         throw new Error("Failed to rebuild Instagram queue schedule: " + updateError.message);
       }
 
-      return rows.length;
+      return updated;
     },
 
     async listPending(limit) {
