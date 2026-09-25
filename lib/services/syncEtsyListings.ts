@@ -360,6 +360,6 @@ function seasonalPriorityRefresher(userId: string) {
       current: 95, message: `Seasonal AI: ${generated} classified, ${remaining} remaining`
     }));
     logger.info("SYNC", "Seasonal classifications refreshed", result);
-    return true;
+    return result.generated > 0;
   };
 }

@@ -4,7 +4,7 @@ import { createSyncJobsRepository } from "@/lib/repositories/syncJobsRepository"
 import { runEtsySyncJob } from "@/lib/services/syncJobRunner";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function POST() {
   const unauthorized = await requireAdminRequest();

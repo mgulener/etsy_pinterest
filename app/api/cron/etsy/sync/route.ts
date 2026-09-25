@@ -6,7 +6,7 @@ import { scheduledEtsySync } from "@/lib/services/scheduledEtsySync";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 export async function GET(request: Request) {
   const unauthorized = validateCronRequest(request);

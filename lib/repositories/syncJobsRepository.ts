@@ -18,8 +18,8 @@ export type SyncJobsRepository = {
   fail(id: string, error: string): Promise<void>;
 };
 
-// Vercel workers have a 5-minute budget; allow another 5 minutes without progress.
-const ETSY_SYNC_STALE_MS = 10 * 60_000;
+// The Pro worker may run for up to 800 seconds; leave a small recovery buffer.
+const ETSY_SYNC_STALE_MS = 20 * 60_000;
 
 export function createSyncJobsRepository(supabase = getSupabaseAdmin()): SyncJobsRepository {
   async function readJob(userId: string, type: SyncJobType, activeOnly: boolean) {
@@ -36,7 +36,7 @@ export function createSyncJobsRepository(supabase = getSupabaseAdmin()): SyncJob
       const { error: recoveryError } = await supabase.from("sync_jobs").update({
         status: "failed",
         message: "Etsy sync interrupted. Start Sync Etsy again to retry.",
-        error: "No progress for 10 minutes. The previous worker may have stopped or timed out.",
+        error: "No progress for 20 minutes. The previous worker may have stopped or timed out.",
         completed_at: new Date().toISOString()
       }).eq("id", data.id).eq("user_id", userId).eq("type", "etsy_sync")
         .eq("status", "running").eq("updated_at", data.updated_at);

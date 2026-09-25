@@ -50,7 +50,7 @@ export type PinQueueRepository = {
   }): Promise<QueuePageResult>;
 };
 
-const scheduleUpdateBatchSize = 25;
+const scheduleUpdateBatchSize = 100;
 
 export function createPinQueueRepository(options: {
   generateDescriptions?: (products: PinterestDescriptionProduct[]) => Promise<Map<string, string>>;

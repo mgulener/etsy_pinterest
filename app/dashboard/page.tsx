@@ -16,7 +16,7 @@ import { createOptionalReader } from "@/lib/utils/optionalRead";
 import { FacebookSummary } from "@/app/facebook/FacebookSummary";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 800;
 
 type PageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;

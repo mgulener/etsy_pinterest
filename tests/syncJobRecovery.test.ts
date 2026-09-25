@@ -57,7 +57,7 @@ test("manual sync lookup releases only this owner's stale Etsy worker", async ()
   assert.equal(await jobs.getActiveForUser("owner", "etsy_sync"), null);
   assert.equal(rows[0].status, "failed");
   assert.equal(rows[1].status, "running");
-  assert.match(rows[0].error!, /No progress for 10 minutes/);
+  assert.match(rows[0].error!, /No progress for 20 minutes/);
   assert.equal(patches[0].searchParams.get("updated_at"), `eq.${rows[0].updated_at}`);
   assert.equal(patches[0].searchParams.get("type"), "eq.etsy_sync");
 });

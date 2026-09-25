@@ -60,7 +60,7 @@ export type InstagramQueueRepository = {
   }): Promise<InstagramQueuePageResult>;
 };
 
-const scheduleUpdateBatchSize = 25;
+const scheduleUpdateBatchSize = 100;
 
 export function createInstagramQueueRepository(): InstagramQueueRepository {
   const supabase = getSupabaseAdmin();
