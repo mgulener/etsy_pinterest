@@ -68,10 +68,11 @@ export async function pinterestRequest<T>(path: string, init: RequestInit = {}, 
   return pinterestRequestWithContext<T>(path, init, await getPinterestApiContext(userId));
 }
 
-export async function createPin(input: CreatePinInput, userId?: string | null): Promise<CreatePinResult> {
+export async function createPin(input: CreatePinInput, userId?: string | null, signal?: AbortSignal): Promise<CreatePinResult> {
   const context = await getPinterestApiContext(userId);
   const response = await pinterestRequestWithContext<{ id: string }>("/pins", {
     method: "POST",
+    signal,
     body: JSON.stringify({
       board_id: resolvePinterestPublishBoardId(input.boardId, context),
       title: input.title.slice(0, 100),

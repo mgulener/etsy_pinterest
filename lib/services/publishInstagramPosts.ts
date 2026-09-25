@@ -227,7 +227,8 @@ export async function publishInstagramPostsWithDependencies(input: {
 
 export async function publishInstagramPosts(
   onProgress?: (progress: SyncJobProgressInput) => Promise<void> | void,
-  userId?: string | null
+  userId?: string | null,
+  options: { maxPostsPerRun?: number } = {}
 ) {
   const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
 
@@ -256,7 +257,7 @@ export async function publishInstagramPosts(
     instagram: {
       createPost: (postInput, listingId) => publisher.create(listingId, postInput)
     },
-    maxPostsPerRun: settings.maxInstagramPostsPerRun,
+    maxPostsPerRun: options.maxPostsPerRun ?? settings.maxInstagramPostsPerRun,
     maxRetries: settings.maxInstagramRetries,
     dryRun: settings.dryRun,
     onProgress

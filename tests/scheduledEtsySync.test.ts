@@ -55,3 +55,13 @@ test("failed sync returns HTTP failure instead of reporting success to cron", as
   assert.equal(response.status, 500);
   assert.equal((await response.json()).error, "Etsy unavailable");
 });
+
+test("daily cron skips a second successful Etsy sync within twenty hours", async () => {
+  const { input, calls, job } = fixture();
+  const latest = { ...job, status: "succeeded", completed_at: new Date().toISOString() } as SyncJobRow;
+  input.jobs.getLatestForUser = async () => latest;
+  const response = await scheduledEtsySync(input);
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, []);
+  assert.equal((await response.json()).skipped, true);
+});

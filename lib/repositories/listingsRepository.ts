@@ -42,6 +42,12 @@ function toListingRow(listing: NormalizedEtsyListing) {
   };
 }
 
+export function uniqueListingsById(listings: NormalizedEtsyListing[]) {
+  const unique = new Map<number, NormalizedEtsyListing>();
+  listings.forEach((listing) => unique.set(listing.etsyListingId, listing));
+  return [...unique.values()];
+}
+
 export function createListingsRepository(): ListingsRepository {
   const supabase = getSupabaseAdmin();
 
@@ -116,9 +122,10 @@ export function createListingsRepository(): ListingsRepository {
 
       const now = new Date().toISOString();
       const chunkSize = 500;
+      const uniqueListings = uniqueListingsById(listings);
 
-      for (let i = 0; i < listings.length; i += chunkSize) {
-        const chunk = listings.slice(i, i + chunkSize);
+      for (let i = 0; i < uniqueListings.length; i += chunkSize) {
+        const chunk = uniqueListings.slice(i, i + chunkSize);
         const { error } = await supabase.from("etsy_listings").upsert(
           chunk.map((listing) => ({
             ...toListingRow(listing),

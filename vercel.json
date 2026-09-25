@@ -9,7 +9,19 @@
     },
     {
       "path": "/api/cron/pinterest/publish",
-      "schedule": "0 4 * * *"
+      "schedule": "5,20,35,50 0-2,4-23 * * *"
+    },
+    {
+      "path": "/api/cron/instagram/publish",
+      "schedule": "10,25,40,55 0-2,4-23 * * *"
+    },
+    {
+      "path": "/api/cron/facebook/publish",
+      "schedule": "0,15,30,45 0-2,4-23 * * *"
+    },
+    {
+      "path": "/api/cron/health",
+      "schedule": "30 3 * * *"
     }
   ]
 }

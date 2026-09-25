@@ -571,6 +571,8 @@ test("canonical route architecture has no legacy app routes", () => {
     "app/api/cron/etsy/sync/route.ts",
     "app/api/cron/pinterest/publish/route.ts",
     "app/api/cron/instagram/publish/route.ts",
+    "app/api/cron/facebook/publish/route.ts",
+    "app/api/cron/health/route.ts",
     "app/api/auth/pinterest/start/route.ts",
     "app/api/auth/pinterest/callback/route.ts",
     "app/api/etsy/sync/route.ts",
@@ -604,7 +606,7 @@ test("canonical route architecture has no legacy app routes", () => {
   ];
   const vercelConfig = JSON.parse(
     readFileSync(join(projectRoot, "vercel.json"), "utf8")
-  ) as { crons: Array<{ path: string }> };
+  ) as { crons: Array<{ path: string; schedule: string }> };
 
   expectedRoutes.forEach((route) => {
     assert.equal(existsSync(join(projectRoot, route)), true, `${route} should exist`);
@@ -618,7 +620,21 @@ test("canonical route architecture has no legacy app routes", () => {
     vercelConfig.crons.map((cron) => cron.path),
     [
       "/api/cron/etsy/sync",
-      "/api/cron/pinterest/publish"
+      "/api/cron/pinterest/publish",
+      "/api/cron/instagram/publish",
+      "/api/cron/facebook/publish",
+      "/api/cron/health"
+    ]
+  );
+
+  assert.deepEqual(
+    vercelConfig.crons.map((cron) => cron.schedule),
+    [
+      "0 3 * * *",
+      "5,20,35,50 0-2,4-23 * * *",
+      "10,25,40,55 0-2,4-23 * * *",
+      "0,15,30,45 0-2,4-23 * * *",
+      "30 3 * * *"
     ]
   );
 });

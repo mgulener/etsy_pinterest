@@ -160,7 +160,10 @@ export async function publishPinterestPinsWithDependencies(input: {
   };
 }
 
-export async function publishPinterestPins(userId?: string | null) {
+export async function publishPinterestPins(
+  userId?: string | null,
+  options: { maxPinsPerRun?: number } = {}
+) {
   const settings = userId ? await getSettingsForUser(userId) : await getCurrentUserSettings();
 
   if (!settings.pinterestEnabled) {
@@ -200,7 +203,7 @@ export async function publishPinterestPins(userId?: string | null) {
     queueRepository: createPinQueueRepository(),
     postsRepository: createPinterestPostsRepository(),
     pinterest: { createPin: (input) => createPin(input, userId) },
-    maxPinsPerRun: settings.maxPinsPerRun,
+    maxPinsPerRun: options.maxPinsPerRun ?? settings.maxPinsPerRun,
     maxRetries: settings.maxPinRetries,
     dryRun: settings.dryRun
   });

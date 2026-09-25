@@ -3,6 +3,7 @@ import { getEtsyAutomationUserId } from "@/lib/repositories/userSettingsReposito
 import { publishFacebookForUser } from "@/lib/services/publishFacebookPosts";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function GET(request: Request) {

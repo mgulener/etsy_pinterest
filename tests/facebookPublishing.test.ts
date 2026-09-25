@@ -129,6 +129,24 @@ test("Facebook Graph errors never expose provider-echoed secrets", async () => {
   error => error instanceof FacebookError && !error.ambiguous && error.pause && !error.message.includes("private-token"));
 });
 
+test("Facebook identity checkpoint is actionable, pauses publishing and stays secret-free", async () => {
+  await assert.rejects(createFacebookPhoto(settings, {
+    message: item.message, imageUrl: item.image_url, destinationUrl: item.destination_url
+  }, async () => Response.json({
+    error: { code: 368, error_subcode: 4854002, message: "private-token" }
+  }, { status: 400 })), error => error instanceof FacebookError && !error.ambiguous && error.pause &&
+    error.message.includes("identity confirmation") && !error.message.includes("private-token"));
+});
+
+test("Facebook generic restriction reports safe diagnostic codes and pauses publishing", async () => {
+  await assert.rejects(createFacebookPhoto(settings, {
+    message: item.message, imageUrl: item.image_url, destinationUrl: item.destination_url
+  }, async () => Response.json({
+    error: { code: 368, error_subcode: 1390008, message: "private-token" }
+  }, { status: 400 })), error => error instanceof FacebookError && !error.ambiguous && error.pause &&
+    error.message.includes("code 368, subcode 1390008") && !error.message.includes("private-token"));
+});
+
 test("Facebook verifies token identity and rejects mismatched Page IDs", async () => {
   assert.deepEqual(await verifyFacebookPage(settings, async () => Response.json({ id: "123", name: "Test Page" })), { id: "123", name: "Test Page" });
   await assert.rejects(verifyFacebookPage(settings, async () => Response.json({ id: "999", name: "Other Page" })), /does not match/);

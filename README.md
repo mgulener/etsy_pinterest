@@ -308,6 +308,26 @@ Publishing and sandbox tests use the saved description verbatim. Rows without a
 saved description fall back to complete sentences from the Etsy description, or
 the title when the first sentence is too long. Previously published Pins are not updated.
 
+### Local Pinterest publishing trial
+
+`scripts/trigger-pinterest-publish.ts --run` is the entry point for the local
+scheduled publishing trial (Node.js 22+, `--env-file=.env.local --import tsx`).
+It runs the existing Pinterest publisher locally once, only with Pinterest enabled,
+production selected, dry run disabled, and `max_pins_per_run = 1`. It respects
+queue due dates, a ten-minute minimum since the last publication, and a local
+guard of 144 publications in the preceding 24 hours. These are operational
+controls, not Pinterest's guaranteed safe posting limits.
+
+Pending errors and processing/failed/needs-review items stop this trigger.
+API errors, malformed results, missing database receipts, and ambiguous outcomes
+disable Pinterest without retrying. A durable `.local/pinterest-publish.lock`
+blocks a second local run; do not delete a stale lock without reconciling the
+previous request. Provider receipts are persisted before database updates, with
+a 90-second Pin creation timeout and no automatic retries. Successful runs are
+recorded in ignored `.local/` files.
+The local scheduler requires this checkout, an awake computer, and the desktop
+app running. It does not replace Vercel's daily cron or guard dashboard actions.
+
 Vercel Cron calls:
 
 ```text
@@ -386,15 +406,17 @@ Token notes:
 
 ## Vercel deployment
 
-`vercel.json` configures Hobby-plan-compatible daily cron jobs:
+`vercel.json` configures the production cron jobs for the one-month queue drain on Vercel Pro:
 
 ```text
 /api/cron/etsy/sync            0 3 * * *
-/api/cron/pinterest/publish    0 4 * * *
-/api/cron/instagram/publish    0 5 * * *
+/api/cron/pinterest/publish    5,20,35,50 0-2,4-23 * * *
+/api/cron/instagram/publish    10,25,40,55 0-2,4-23 * * *
+/api/cron/facebook/publish     0,15,30,45 0-2,4-23 * * *
+/api/cron/health               30 3 * * *
 ```
 
-Vercel Hobby accounts only allow daily cron schedules. On a Pro plan, you can change these back to a more active cadence such as sync every 6 hours and publish every hour. Vercel cron jobs run on production deployments. Set the same environment variables in the Vercel project settings.
+The publishing schedules are deliberately staggered by five minutes and every cron invocation publishes at most one item. Each channel runs every 15 minutes outside the 03:00-03:59 UTC maintenance hour, when the daily Etsy sync and health check run without publication overlap. The health check returns a 5xx response when the daily Etsy sync is stale, a channel has blocked items, or overdue work has no recent publication. Vercel cron jobs run on production deployments. Keep `CRON_SECRET` and the existing application environment variables configured for Production.
 
 For cron security, send either:
 

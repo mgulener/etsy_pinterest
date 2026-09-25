@@ -39,17 +39,24 @@ async function graphRequest(settings: Credentials, path: string, body?: URLSearc
     }
   }
   if (!response.ok || data.error) {
-    const code = typeof data.error === "object" && data.error !== null && "code" in data.error
-      ? Number(data.error.code) : 0;
+    const graphError = typeof data.error === "object" && data.error !== null ? data.error : null;
+    const code = graphError && "code" in graphError ? Number(graphError.code) : 0;
+    const subcode = graphError && "error_subcode" in graphError ? Number(graphError.error_subcode) : 0;
     // Never include upstream messages: they can echo credentials or request content.
     if (code === 190 && !response.ok && response.status < 500) {
-      const subcode = typeof data.error === "object" && data.error !== null && "error_subcode" in data.error
-        ? Number(data.error.error_subcode) : 0;
       throw new FacebookTokenError(subcode === 463);
     }
+    if (code === 368 && subcode === 4854002) {
+      throw new FacebookError(
+        "Facebook requires identity confirmation before this Page can publish. Switch to your main Facebook profile, complete Identity confirmation, then create and save a new Page access token.",
+        false,
+        true
+      );
+    }
     const ambiguous = Boolean(body) && (response.status >= 500 || response.ok);
-    const pause = ambiguous || [4, 10, 17, 32, 190, 200, 613].includes(code) || response.status === 429;
-    throw new FacebookError(`Facebook request failed (HTTP ${response.status}, code ${code}). ${ambiguous
+    const pause = ambiguous || [4, 10, 17, 32, 190, 200, 368, 613].includes(code) || response.status === 429;
+    const diagnostic = subcode ? `, subcode ${subcode}` : "";
+    throw new FacebookError(`Facebook request failed (HTTP ${response.status}, code ${code}${diagnostic}). ${ambiguous
       ? "Publication needs review; do not retry automatically."
       : "Check Page permissions, token validity and account restrictions."}`, ambiguous, pause);
   }
