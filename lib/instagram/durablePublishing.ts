@@ -1,3 +1,4 @@
+import { InstagramApiError } from "./types";
 import type { CreateInstagramPostInput, CreateInstagramPostResult, InstagramContainerStatus } from "./types";
 
 export type PublishAttempt = {
@@ -19,6 +20,7 @@ export type PublishAttemptStore = {
   beginPublish(id: string): Promise<boolean>;
   published(id: string, mediaId: string): Promise<void>;
   failPreparation(id: string): Promise<boolean>;
+  rejectPublish(id: string): Promise<boolean>;
 };
 
 export class InstagramVerificationRequired extends Error {
@@ -85,6 +87,14 @@ export function createDurableInstagramPublisher(store: PublishAttemptStore, api:
       } catch (error) {
         if (error instanceof InstagramVerificationRequired) throw error;
         if (!boundaryStarted && await store.failPreparation(attempt.id)) {
+          throw error;
+        }
+        if (
+          boundaryStarted &&
+          error instanceof InstagramApiError &&
+          ["rate_limit", "auth_error", "invalid_media"].includes(error.type) &&
+          await store.rejectPublish(attempt.id)
+        ) {
           throw error;
         }
         throw new InstagramVerificationRequired(

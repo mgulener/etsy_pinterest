@@ -2,6 +2,7 @@ import { validateCronRequest } from "@/lib/auth/cron";
 import { getInstagramAutomationUserId } from "@/lib/repositories/userSettingsRepository";
 import { hasRecentSocialPublication } from "@/lib/services/cronCadence";
 import { publishInstagramPosts } from "@/lib/services/publishInstagramPosts";
+import { INSTAGRAM_QUEUE_INTERVAL_MINUTES } from "@/lib/instagram/settings";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    if (await hasRecentSocialPublication("instagram", 15)) {
+    if (await hasRecentSocialPublication("instagram", INSTAGRAM_QUEUE_INTERVAL_MINUTES)) {
       return Response.json(
         { mode: "publish-instagram", status: "waiting", reason: "cadence" },
         { headers: { "Cache-Control": "no-store" } }

@@ -1,4 +1,5 @@
 import { getFacebookSettings } from "@/lib/repositories/facebookRepository";
+import { INSTAGRAM_QUEUE_INTERVAL_MINUTES } from "@/lib/instagram/settings";
 import { getEtsyAutomationUserId, getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { PinQueueStatus } from "@/lib/supabase/types";
@@ -192,7 +193,7 @@ export async function readAutomationHealthSnapshot(now = new Date()): Promise<Au
       blocked: instagramBlocked,
       oldestDueAt: instagramOldest,
       lastPublishedAt: instagramLatest,
-      intervalMinutes: 15
+      intervalMinutes: INSTAGRAM_QUEUE_INTERVAL_MINUTES
     },
     facebook: {
       enabled: facebookEnabled,

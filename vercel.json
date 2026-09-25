@@ -13,7 +13,7 @@
     },
     {
       "path": "/api/cron/instagram/publish",
-      "schedule": "10,25,40,55 0-2,4-23 * * *"
+      "schedule": "7,27,47 0-2,4-23 * * *"
     },
     {
       "path": "/api/cron/facebook/publish",

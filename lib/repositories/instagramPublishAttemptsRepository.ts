@@ -38,6 +38,7 @@ export function createInstagramPublishAttemptsRepository(): PublishAttemptStore 
     async published(id, mediaId) {
       if (!await transition(id, ["publishing"], { state: "published", media_id: mediaId })) throw new Error("Publish receipt could not be saved");
     },
-    failPreparation: (id) => transition(id, ["preparing", "ready"], { state: "failed" })
+    failPreparation: (id) => transition(id, ["preparing", "ready"], { state: "failed" }),
+    rejectPublish: (id) => transition(id, ["publishing"], { state: "failed" })
   };
 }

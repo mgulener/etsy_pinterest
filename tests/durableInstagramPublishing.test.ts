@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createDurableInstagramPublisher, InstagramVerificationRequired, type PublishAttempt, type PublishAttemptStore, type DurableInstagramApi } from "../lib/instagram/durablePublishing";
-import type { CreateInstagramPostInput } from "../lib/instagram/types";
+import { InstagramApiError, type CreateInstagramPostInput } from "../lib/instagram/types";
 
 const input: CreateInstagramPostInput = { imageUrl: "https://example.com/a.jpg", caption: "Original caption", mode: "single" };
 class Store implements PublishAttemptStore {
@@ -35,6 +35,10 @@ class Store implements PublishAttemptStore {
     if (this.row?.id !== id || !["preparing", "ready"].includes(this.row.state)) return false;
     this.row.state = "failed"; return true;
   }
+  async rejectPublish(id: string) {
+    if (this.row?.id !== id || this.row.state !== "publishing") return false;
+    this.row.state = "failed"; return true;
+  }
 }
 function setup() {
   const store = new Store(); const calls = { prepare: 0, publish: 0, status: 0 };
@@ -63,6 +67,19 @@ test("Meta success with lost response never sends a second publish", async () =>
   assert.equal(store.row?.state, "publishing");
   await assert.rejects(publisher.create(1, input), /PUBLISHED/);
   assert.equal(calls.publish, 1); assert.equal(calls.prepare, 1); assert.equal(calls.status, 1);
+});
+
+test("explicit Meta rate-limit rejection safely allows a later attempt", async () => {
+  const { api, publisher, calls, store } = setup();
+  api.publish = async () => {
+    calls.publish++;
+    throw new InstagramApiError("Media Publish Limit Exceeded", "rate_limit", true);
+  };
+  await assert.rejects(publisher.create(1, input), InstagramApiError);
+  assert.equal(store.row?.state, "failed");
+  api.publish = async () => { calls.publish++; return { id: "media-2" }; };
+  assert.equal((await publisher.create(1, input)).id, "media-2");
+  assert.equal(calls.publish, 2);
 });
 
 test("receipt DB failure after Meta publish blocks automatic retry", async () => {

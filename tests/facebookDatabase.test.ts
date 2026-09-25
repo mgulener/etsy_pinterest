@@ -29,6 +29,7 @@ test("Facebook migration and database publication safeguards", { skip: !existsSy
     create table public.admin_users(id uuid primary key);`);
   sql(readFileSync(new URL("../supabase/migrations/0023_facebook_channel.sql", import.meta.url), "utf8"));
   sql(readFileSync(new URL("../supabase/migrations/0024_facebook_five_minute_interval.sql", import.meta.url), "utf8"));
+  sql(readFileSync(new URL("../supabase/migrations/0027_facebook_cron_tolerance.sql", import.meta.url), "utf8"));
   sql(`insert into admin_users values ('${owner}'),('${other}');
     insert into facebook_settings(user_id,page_id,page_name,page_access_token,api_version,verified_at)
       values ('${owner}','123','Test Page','test-token','v24.0',now()),('${other}','999','Other Page','other-token','v24.0',now());
@@ -71,12 +72,15 @@ test("Facebook migration and database publication safeguards", { skip: !existsSy
     assert.equal(sql(claim), "");
   });
   await t.test("receipt required for publication and interval enforced across rows", () => {
+    sql(`update facebook_settings set interval_minutes=10 where user_id='${owner}'`);
     assert.throws(() => sql(`update facebook_queue set status='published' where id='${row}'`));
     sql(`update facebook_queue set status='published',facebook_post_id='123_789',published_at=now() where id='${row}';
       insert into facebook_queue(user_id,page_id,etsy_listing_id,title,image_url,destination_url,message,scheduled_at)
       values ('${owner}','123',457,'Christmas','https://i.etsystatic.com/image.jpg','https://www.etsy.com/listing/457','Second draft',now()-interval '1 minute');`);
     assert.equal(sql(claim), "");
-    sql(`update facebook_queue set published_at=now()-interval '6 minutes' where id='${row}'`);
+    sql(`update facebook_queue set published_at=now()-interval '8 minutes' where id='${row}'`);
+    assert.equal(sql(claim), "");
+    sql(`update facebook_queue set published_at=now()-interval '8 minutes 31 seconds' where id='${row}'`);
     assert.ok(sql(claim));
   });
   await t.test("deduplication survives cancellation, and only pending unlocked current versions reschedule", () => {

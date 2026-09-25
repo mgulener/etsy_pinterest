@@ -7,9 +7,9 @@ import {
   selectInstagramMediaUrls
 } from "@/lib/instagram/media";
 import { buildInstagramCaption } from "@/lib/instagram/caption";
+import { INSTAGRAM_QUEUE_INTERVAL_MINUTES } from "@/lib/instagram/settings";
 import {
   buildScheduledAt,
-  DEFAULT_QUEUE_INTERVAL_MINUTES,
   getNextScheduleStart,
   sortQueueRowsForPublishing
 } from "@/lib/queue/scheduling";
@@ -164,7 +164,7 @@ export function createInstagramQueueRepository(): InstagramQueueRepository {
       }
     },
 
-    async rebuildPendingSchedule(intervalMinutes = DEFAULT_QUEUE_INTERVAL_MINUTES) {
+    async rebuildPendingSchedule(intervalMinutes = INSTAGRAM_QUEUE_INTERVAL_MINUTES) {
       const pageSize = 1000;
       const data: Array<SeasonalQueueItem & { title: string; description: string | null }> = [];
       let from = 0;

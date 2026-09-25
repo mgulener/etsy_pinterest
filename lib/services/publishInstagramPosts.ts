@@ -3,6 +3,7 @@ import { createDurableInstagramPublisher, InstagramVerificationRequired } from "
 import { createInstagramPublishAttemptsRepository } from "@/lib/repositories/instagramPublishAttemptsRepository";
 import { prepareInstagramContainer, waitForContainer, publishMedia, getContainerStatus, getMedia } from "@/lib/instagram/publishing";
 import { InstagramApiError } from "@/lib/instagram/types";
+import { INSTAGRAM_QUEUE_INTERVAL_MINUTES } from "@/lib/instagram/settings";
 import { createInstagramPostsRepository } from "@/lib/repositories/instagramPostsRepository";
 import { createInstagramQueueRepository } from "@/lib/repositories/instagramQueueRepository";
 import { buildScheduledAt } from "@/lib/queue/scheduling";
@@ -54,7 +55,7 @@ export async function publishInstagramPostsWithDependencies(input: {
   await input.onProgress?.({ current: 10, total: 100, message: "Recovering stale Instagram publish items" });
   const recovered = await input.queueRepository.recoverStaleProcessing(
     new Date(Date.now() - STALE_PROCESSING_MS).toISOString(),
-    buildScheduledAt(1)
+    buildScheduledAt(1, INSTAGRAM_QUEUE_INTERVAL_MINUTES)
   );
 
   await input.onProgress?.({
@@ -194,7 +195,12 @@ export async function publishInstagramPostsWithDependencies(input: {
           message
         });
       } else {
-        await input.queueRepository.markRetryable(item.id, message, nextAttemptCount, buildScheduledAt(1));
+        await input.queueRepository.markRetryable(
+          item.id,
+          message,
+          nextAttemptCount,
+          buildScheduledAt(1, INSTAGRAM_QUEUE_INTERVAL_MINUTES)
+        );
         retried += 1;
         await input.onProgress?.({
           current: index + 1,
