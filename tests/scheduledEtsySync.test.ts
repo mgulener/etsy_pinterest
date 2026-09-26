@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { scheduledEtsySync } from "../lib/services/scheduledEtsySync";
+import { getDailySyncWindowStart, scheduledEtsySync } from "../lib/services/scheduledEtsySync";
 import type { SyncJobRow } from "../lib/supabase/types";
 
 function fixture(status: SyncJobRow["status"] = "succeeded") {
@@ -17,7 +17,8 @@ function fixture(status: SyncJobRow["status"] = "succeeded") {
     },
     run: async (id: string, userId: string) => {
       assert.equal(id, "job-1"); assert.equal(userId, "owner-1"); calls.push("run");
-    }
+    },
+    now: undefined as (() => Date) | undefined
   };
   return { input, calls, job };
 }
@@ -56,12 +57,35 @@ test("failed sync returns HTTP failure instead of reporting success to cron", as
   assert.equal((await response.json()).error, "Etsy unavailable");
 });
 
-test("daily cron skips a second successful Etsy sync within twenty hours", async () => {
+test("daily cron skips a second successful Etsy sync in the same daily window", async () => {
   const { input, calls, job } = fixture();
-  const latest = { ...job, status: "succeeded", completed_at: new Date().toISOString() } as SyncJobRow;
+  input.now = () => new Date("2026-09-26T03:05:00.000Z");
+  const latest = { ...job, status: "succeeded", completed_at: "2026-09-26T03:01:00.000Z" } as SyncJobRow;
   input.jobs.getLatestForUser = async () => latest;
   const response = await scheduledEtsySync(input);
   assert.equal(response.status, 200);
   assert.deepEqual(calls, []);
   assert.equal((await response.json()).skipped, true);
+});
+
+test("daily cron runs after the next window even when the previous success is less than twenty hours old", async () => {
+  const { input, calls, job } = fixture();
+  input.now = () => new Date("2026-09-26T03:00:00.000Z");
+  const previous = { ...job, status: "succeeded", completed_at: "2026-09-25T10:19:00.000Z" } as SyncJobRow;
+  let reads = 0;
+  input.jobs.getLatestForUser = async () => reads++ === 0 ? previous : { ...job, status: "succeeded", result: { created: 20 } } as SyncJobRow;
+  const response = await scheduledEtsySync(input);
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls, ["create", "run"]);
+});
+
+test("daily sync window rolls back to the previous day before 03:00 UTC", () => {
+  assert.equal(
+    getDailySyncWindowStart(new Date("2026-09-26T02:59:59.000Z")).toISOString(),
+    "2026-09-25T03:00:00.000Z"
+  );
+  assert.equal(
+    getDailySyncWindowStart(new Date("2026-09-26T03:00:00.000Z")).toISOString(),
+    "2026-09-26T03:00:00.000Z"
+  );
 });
