@@ -28,7 +28,7 @@ export function EtsyPermissions({
       <div className="d-flex align-items-center flex-wrap gap-3 mb-3">
         <h2 id="etsy-permissions-heading" className="h5 mb-0">Etsy permissions</h2>
         <span className={`badge ${writeAccess ? "text-bg-warning" : "text-bg-secondary"}`}>{status}</span>
-        <a className="btn btn-outline-secondary btn-sm" href="/api/auth/etsy/start">Connect Etsy (read-only)</a>
+        {!connected ? <a className="btn btn-outline-secondary btn-sm" href="/api/auth/etsy/start">Connect Etsy (read-only)</a> : null}
       </div>
       <form action="/api/auth/etsy/start" method="post" className="mb-4" onSubmit={() => setPending(true)}>
         <input type="hidden" name="permission" value="order-read" />

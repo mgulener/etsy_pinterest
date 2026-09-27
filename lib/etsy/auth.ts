@@ -3,6 +3,7 @@ import { getCurrentSession, getSessionSecret, requireAdminSession } from "@/lib/
 import {
   buildEtsyAuthorizationUrl,
   ETSY_OAUTH_TTL_SECONDS,
+  getMissingEtsyScopes,
   getRequestedEtsyScopes,
   resolveEtsyTokenScope,
   signEtsyOAuthState,
@@ -178,6 +179,13 @@ export async function handleEtsyOAuthCallback(request: Request): Promise<{ shopI
     code_verifier: oauthCookie.codeVerifier
   });
   const token = await exchangeToken(params);
+  const grantedScope = resolveEtsyTokenScope(token.scope, oauthCookie.requestedScopes);
+  const missingScopes = getMissingEtsyScopes(grantedScope, oauthCookie.requestedScopes);
+
+  if (missingScopes.length > 0) {
+    throw new Error(`Etsy did not grant the requested permissions: ${missingScopes.join(", ")}`);
+  }
+
   await saveToken(oauthCookie.userId, token, oauthCookie.requestedScopes);
 
   let shopIdSaved = true;

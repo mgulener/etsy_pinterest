@@ -11,6 +11,7 @@ import {
   ETSY_ORDER_READ_SCOPES,
   ETSY_READ_SCOPES,
   ETSY_WRITE_SCOPES,
+  getMissingEtsyScopes,
   getRequestedEtsyScopes,
   hasEtsyListingWriteAccess,
   hasEtsyOrderReadAccess,
@@ -215,6 +216,17 @@ test("order access status requires an exact granted scope", () => {
   assert.equal(hasEtsyOrderReadAccess("listings_r shops_r transactions_r"), true);
 });
 
+test("missing Etsy permissions are detected before a successful callback", () => {
+  assert.deepEqual(
+    getMissingEtsyScopes("listings_r shops_r listings_w", ETSY_FULL_SCOPES.join(" ")),
+    ["transactions_r"]
+  );
+  assert.deepEqual(
+    getMissingEtsyScopes(ETSY_FULL_SCOPES.join(" "), ETSY_FULL_SCOPES.join(" ")),
+    []
+  );
+});
+
 test("permission UI starts unchecked and disabled, with no automatic write form submission", () => {
   const html = renderToStaticMarkup(createElement(EtsyPermissions, {
     connected: true,
@@ -231,6 +243,7 @@ test("permission UI starts unchecked and disabled, with no automatic write form 
   assert.match(html, /Automatic Etsy sync remains read-only/);
   assert.match(html, /name="confirmOrderReadAccess"/);
   assert.match(html, /read-only access to this shop/);
+  assert.doesNotMatch(html, /Connect Etsy \(read-only\)/);
 });
 
 test("Etsy listing and section retrieval issue only GET requests", async () => {

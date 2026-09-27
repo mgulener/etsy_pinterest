@@ -93,6 +93,11 @@ export function hasEtsyOrderReadAccess(scope: string | null | undefined) {
   return (scope ?? "").split(/\s+/).includes("transactions_r");
 }
 
+export function getMissingEtsyScopes(grantedScope: string | null | undefined, requestedScope: string) {
+  const granted = new Set((grantedScope ?? "").split(/\s+/).filter(Boolean));
+  return requestedScope.split(/\s+/).filter((scope) => scope && !granted.has(scope));
+}
+
 export function resolveEtsyTokenScope(returnedScope: string | undefined, previousScope: string | null) {
   // OAuth may omit an unchanged scope. Never merge old permissions into an explicit response.
   return returnedScope === undefined ? previousScope ?? undefined : returnedScope.trim();
