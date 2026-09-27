@@ -9,7 +9,7 @@ import { SubmitButton } from "@/app/components/SubmitButton";
 import { EtsyPermissions } from "./EtsyPermissions";
 import { FacebookSettings } from "./FacebookSettings";
 import { getFacebookSettings } from "@/lib/repositories/facebookRepository";
-import { hasEtsyListingWriteAccess } from "@/lib/etsy/oauth";
+import { hasEtsyListingWriteAccess, hasEtsyOrderReadAccess } from "@/lib/etsy/oauth";
 import { requireAdminSession } from "@/lib/auth/session";
 import { listPinterestBoards, type PinterestBoard } from "@/lib/pinterest/client";
 import { getSettingsForUser } from "@/lib/repositories/userSettingsRepository";
@@ -155,6 +155,7 @@ export default async function SettingsPage({ searchParams }: PageProps) {
         connected={Boolean(settings.etsyAccessToken)}
         scopeKnown={settings.etsyTokenScope !== null}
         writeAccess={Boolean(settings.etsyAccessToken) && hasEtsyListingWriteAccess(settings.etsyTokenScope)}
+        orderReadAccess={Boolean(settings.etsyAccessToken) && hasEtsyOrderReadAccess(settings.etsyTokenScope)}
         canConnect={Boolean(settings.etsyApiKey)}
       />
 

@@ -7,10 +7,13 @@ import { getAllActiveListings, getShopSections } from "../lib/etsy/client";
 import {
   buildEtsyAuthorizationUrl,
   EtsyConsentError,
+  ETSY_FULL_SCOPES,
+  ETSY_ORDER_READ_SCOPES,
   ETSY_READ_SCOPES,
   ETSY_WRITE_SCOPES,
   getRequestedEtsyScopes,
   hasEtsyListingWriteAccess,
+  hasEtsyOrderReadAccess,
   resolveEtsyTokenScope,
   signEtsyOAuthState,
   verifyEtsyOAuthState,
@@ -56,12 +59,39 @@ test("listing write scope is added only with explicit same-origin POST consent",
   assert.deepEqual(ETSY_WRITE_SCOPES, ["listings_r", "shops_r", "listings_w"]);
 });
 
+test("order read scope requires explicit consent and preserves an existing listing permission", async () => {
+  const request = consentRequest({
+    permission: "order-read",
+    confirmOrderReadAccess: "approved"
+  });
+  assert.equal(await getRequestedEtsyScopes(request), "listings_r shops_r transactions_r");
+  assert.equal(
+    await getRequestedEtsyScopes(consentRequest({
+      permission: "order-read",
+      confirmOrderReadAccess: "approved"
+    }), "listings_r shops_r listings_w"),
+    "listings_r shops_r listings_w transactions_r"
+  );
+  assert.deepEqual(ETSY_ORDER_READ_SCOPES, ["listings_r", "shops_r", "transactions_r"]);
+  assert.deepEqual(ETSY_FULL_SCOPES, ["listings_r", "shops_r", "listings_w", "transactions_r"]);
+});
+
+test("listing consent preserves previously granted order read access", async () => {
+  assert.equal(
+    await getRequestedEtsyScopes(consentRequest(), "listings_r shops_r transactions_r"),
+    "listings_r shops_r listings_w transactions_r"
+  );
+});
+
 test("missing, false, unrelated and duplicate consent values are rejected", async () => {
   const invalidForms: Array<Record<string, string>> = [
     {}, { permission: "listing-write" }, { confirmWriteAccess: "approved" },
     { permission: "listing-write", confirmWriteAccess: "false" },
     { permission: "listing-write", confirmWriteAccess: "on" },
-    { permission: "delete-listings", confirmWriteAccess: "approved" }
+    { permission: "delete-listings", confirmWriteAccess: "approved" },
+    { permission: "order-read" },
+    { permission: "order-read", confirmOrderReadAccess: "false" },
+    { permission: "order-read", confirmOrderReadAccess: "on" }
   ];
   for (const values of invalidForms) {
     await assert.rejects(getRequestedEtsyScopes(consentRequest(values)), EtsyConsentError);
@@ -116,6 +146,19 @@ test("Etsy URL keeps PKCE and never exposes the shared secret", () => {
 
 test("signed OAuth state binds the requested permission and redirect to the initiating user", () => {
   assert.deepEqual(verify(), approvedState);
+  for (const requestedScopes of [ETSY_ORDER_READ_SCOPES.join(" "), ETSY_FULL_SCOPES.join(" ")]) {
+    const state = { ...approvedState, requestedScopes };
+    assert.deepEqual(
+      verifyEtsyOAuthState({
+        cookie: signEtsyOAuthState(state, secret),
+        secret,
+        userId: state.userId,
+        state: state.state,
+        now
+      }),
+      state
+    );
+  }
 });
 
 test("OAuth callback rejects a different user, a logged-out user and incorrect state", () => {
@@ -165,9 +208,20 @@ test("write access status requires an exact granted scope, not a substring or un
   assert.equal(hasEtsyListingWriteAccess("listings_r shops_r listings_w"), true);
 });
 
+test("order access status requires an exact granted scope", () => {
+  for (const scope of [null, undefined, "", "transactions", "transactions_read", "not_transactions_r"]) {
+    assert.equal(hasEtsyOrderReadAccess(scope), false);
+  }
+  assert.equal(hasEtsyOrderReadAccess("listings_r shops_r transactions_r"), true);
+});
+
 test("permission UI starts unchecked and disabled, with no automatic write form submission", () => {
   const html = renderToStaticMarkup(createElement(EtsyPermissions, {
-    connected: true, scopeKnown: true, writeAccess: false, canConnect: true
+    connected: true,
+    scopeKnown: true,
+    writeAccess: false,
+    orderReadAccess: false,
+    canConnect: true
   }));
   assert.match(html, /method="post"/);
   assert.match(html, /name="confirmWriteAccess"/);
@@ -175,6 +229,8 @@ test("permission UI starts unchecked and disabled, with no automatic write form 
   assert.match(html, /<button[^>]*disabled=""/);
   assert.match(html, /not changes to my products/);
   assert.match(html, /Automatic Etsy sync remains read-only/);
+  assert.match(html, /name="confirmOrderReadAccess"/);
+  assert.match(html, /read-only access to this shop/);
 });
 
 test("Etsy listing and section retrieval issue only GET requests", async () => {

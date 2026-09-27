@@ -87,7 +87,8 @@ async function createCodeChallenge(codeVerifier: string) {
 
 export async function createEtsyAuthorizationUrl(request: Request) {
   const session = await requireAdminSession();
-  const requestedScopes = await getRequestedEtsyScopes(request);
+  const settings = await getSettingsForUser(session.userId);
+  const requestedScopes = await getRequestedEtsyScopes(request, settings.etsyTokenScope);
   const state = randomBase64Url();
   const codeVerifier = randomBase64Url(64);
   const codeChallenge = await createCodeChallenge(codeVerifier);

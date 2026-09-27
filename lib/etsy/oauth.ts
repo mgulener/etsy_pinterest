@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 export const ETSY_READ_SCOPES = ["listings_r", "shops_r"] as const;
 export const ETSY_WRITE_SCOPES = [...ETSY_READ_SCOPES, "listings_w"] as const;
+export const ETSY_ORDER_READ_SCOPES = [...ETSY_READ_SCOPES, "transactions_r"] as const;
+export const ETSY_FULL_SCOPES = [...ETSY_READ_SCOPES, "listings_w", "transactions_r"] as const;
 export const ETSY_OAUTH_TTL_SECONDS = 10 * 60;
 
 export class EtsyConsentError extends Error {
@@ -20,7 +22,10 @@ export type EtsyOAuthState = {
   expiresAt: number;
 };
 
-export async function getRequestedEtsyScopes(request: Request): Promise<string> {
+export async function getRequestedEtsyScopes(
+  request: Request,
+  currentScope: string | null = null
+): Promise<string> {
   if (request.method === "GET") {
     return ETSY_READ_SCOPES.join(" ");
   }
@@ -43,7 +48,7 @@ export async function getRequestedEtsyScopes(request: Request): Promise<string> 
   }
 
   if (!sameOrigin) {
-    throw new EtsyConsentError("Etsy write access must be approved from Settings.", 403);
+    throw new EtsyConsentError("Etsy permissions must be approved from Settings.", 403);
   }
 
   let form: FormData;
@@ -53,20 +58,39 @@ export async function getRequestedEtsyScopes(request: Request): Promise<string> 
     throw new EtsyConsentError("Invalid Etsy permission approval form.");
   }
 
-  if (
-    form.getAll("permission").length !== 1 ||
-    form.get("permission") !== "listing-write" ||
-    form.getAll("confirmWriteAccess").length !== 1 ||
-    form.get("confirmWriteAccess") !== "approved"
-  ) {
-    throw new EtsyConsentError("Explicit approval is required for Etsy listing write access.");
+  const permission = form.getAll("permission").length === 1
+    ? form.get("permission")
+    : null;
+  const listingWriteApproved = permission === "listing-write" &&
+    form.getAll("confirmWriteAccess").length === 1 &&
+    form.get("confirmWriteAccess") === "approved";
+  const orderReadApproved = permission === "order-read" &&
+    form.getAll("confirmOrderReadAccess").length === 1 &&
+    form.get("confirmOrderReadAccess") === "approved";
+
+  if (!listingWriteApproved && !orderReadApproved) {
+    throw new EtsyConsentError("Explicit approval is required for the requested Etsy permission.");
   }
 
-  return ETSY_WRITE_SCOPES.join(" ");
+  const scopes = new Set<string>(ETSY_READ_SCOPES);
+
+  if (listingWriteApproved || hasEtsyListingWriteAccess(currentScope)) {
+    scopes.add("listings_w");
+  }
+
+  if (orderReadApproved || hasEtsyOrderReadAccess(currentScope)) {
+    scopes.add("transactions_r");
+  }
+
+  return [...scopes].join(" ");
 }
 
 export function hasEtsyListingWriteAccess(scope: string | null | undefined) {
   return (scope ?? "").split(/\s+/).includes("listings_w");
+}
+
+export function hasEtsyOrderReadAccess(scope: string | null | undefined) {
+  return (scope ?? "").split(/\s+/).includes("transactions_r");
 }
 
 export function resolveEtsyTokenScope(returnedScope: string | undefined, previousScope: string | null) {
@@ -123,7 +147,12 @@ export function verifyEtsyOAuthState(input: {
     typeof parsed.expiresAt !== "number" ||
     !Number.isFinite(parsed.expiresAt) ||
     parsed.expiresAt <= (input.now ?? Date.now()) ||
-    ![ETSY_READ_SCOPES.join(" "), ETSY_WRITE_SCOPES.join(" ")].includes(parsed.requestedScopes ?? "")
+    ![
+      ETSY_READ_SCOPES.join(" "),
+      ETSY_WRITE_SCOPES.join(" "),
+      ETSY_ORDER_READ_SCOPES.join(" "),
+      ETSY_FULL_SCOPES.join(" ")
+    ].includes(parsed.requestedScopes ?? "")
   ) {
     throw new EtsyConsentError("Etsy OAuth approval is expired or does not belong to this session.");
   }

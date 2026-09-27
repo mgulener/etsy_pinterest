@@ -206,6 +206,8 @@ ETSY_REDIRECT_URI=https://YOUR-VERCEL-DOMAIN.vercel.app/api/auth/etsy/callback
 ```
 
 Sign in and open Settings. `Connect Etsy (read-only)` requests only `listings_r shops_r`.
+The separate order-access approval requests `transactions_r` and preserves any previously granted
+listing-write access. It can read shop receipts and transactions but cannot update orders.
 For listing edit access, select the separate approval checkbox and click `Enable Etsy write access`.
 This requests `listings_r shops_r listings_w` through an authenticated, same-origin POST and then Etsy's consent screen.
 Etsy does not offer a section-only scope: `listings_w` grants general listing edit access.
